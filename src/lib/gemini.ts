@@ -1,5 +1,6 @@
 import { GoogleGenAI, ThinkingLevel, Modality } from "@google/genai";
 import { MASTER_PANEL_PROMPT } from "./prompts";
+import type { TurnContext } from "./ollama";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -8,22 +9,32 @@ export async function* streamAgentTurnGemini(
   agent: { name: string; role: string; prompt: string },
   topic: string,
   history: Array<{ speaker: string; role: string; text: string }>,
-  turnContext: { isFirst: boolean; isLast: boolean },
+  turnContext: TurnContext,
   signal?: AbortSignal
 ): AsyncGenerator<string> {
   const historyBlock = history.length > 0
     ? '\n\nDISCUSSION SO FAR:\n' + history.map(h => `[${h.speaker}]: ${h.text}`).join('\n\n')
     : '';
 
-  const prompt = `You are ${agent.name}, ${agent.role}.${agent.prompt ? ` Character: ${agent.prompt}` : ''}${historyBlock}
+  const last = history[history.length - 1];
+  const lengthRule = turnContext.round === 1
+    ? '2-3 sentences max. Short and punchy.'
+    : turnContext.round === 2
+    ? '3-5 sentences. Real back-and-forth.'
+    : '5-8 sentences. Go deep.';
+
+  const prompt = `${agent.prompt || `You are ${agent.name}, ${agent.role}.`}
+${historyBlock}
 
 ${turnContext.isFirst
-    ? `Open the panel discussion on: "${topic}". As lead, frame the challenge with energy and invite the team.`
+    ? `Open the panel on: "${topic}". Frame the challenge with energy. Give the team something to react to. 2-3 sentences.`
     : turnContext.isLast
-    ? `Synthesize the team's discussion and deliver a clear decisive recommendation as lead.`
-    : `React to what ${history[history.length - 1]?.speaker || 'the previous speaker'} just said and contribute your expert view as ${agent.role} on "${topic}".`}
+    ? `Synthesize everything. Make the call. Be decisive. 10-14 sentences.`
+    : `${last?.speaker || 'The previous speaker'} said: "${last?.text?.substring(0, 250) || ''}"
 
-Speak naturally in 2-4 sentences. Human expert tone. No bullet points. No name introduction.`;
+React to that and contribute your expert take as ${agent.role}. Be specific. Reference actual words from the discussion. ${lengthRule}`}
+
+NEVER use bullet points, headers, or markdown. NEVER start with your name. Sound human — emotional cues like [laughs] or [sighs] are welcome when genuine.`;
 
   const stream = await ai.models.generateContentStream({
     model: 'gemini-2.5-flash',

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { generateTTS, streamAgentTurnGemini } from '../lib/gemini';
-import { fetchOllamaModels, streamAgentResponse } from '../lib/ollama';
+import { fetchOllamaModels, streamAgentResponse, TurnContext } from '../lib/ollama';
 import { generateQwenTTS } from '../lib/qwen-tts';
 import { generateCartesiaTTS, checkCartesiaKey } from '../lib/cartesia-tts';
 import { CARTESIA_VOICES } from '../lib/cartesia-voices';
@@ -345,30 +345,95 @@ export default function Panel() {
     setMemoryBoardContent('');
     abortControllerRef.current = new AbortController();
 
-    // Turn order: Manager opens → specialists → Manager closes
+    // ─────────────────────────────────────────────────────────────────────────
+    // MULTI-ROUND DISCUSSION ENGINE — ~12-15 min when spoken aloud
+    //
+    // Round 1 — Opening Takes:    Manager opens, all 5 specialists react (SHORT)
+    // Round 2 — Cross-fire:       2-3 direct agent-to-agent exchanges (SHORT-MED)
+    // Round 3 — Deep Dive:        Manager redirects, agents challenge assumptions (MED)
+    // Round 4 — Tension & Debate: Disagreements surface, specialists push back (MED-LONG)
+    // Round 5 — Convergence:      Final positions, manager synthesizes, closes (LONG)
+    // ─────────────────────────────────────────────────────────────────────────
+
     const managerIdx = agents.findIndex(a => a.role.toLowerCase().includes('manager'));
     const manager = agents[managerIdx >= 0 ? managerIdx : 0];
-    const specialists = agents.filter((_, i) => i !== (managerIdx >= 0 ? managerIdx : 0));
-    const turnOrder = [manager, ...specialists, manager];
+    const specs = agents.filter((_, i) => i !== (managerIdx >= 0 ? managerIdx : 0));
+    // Pad to 5 slots (cycles through available specialists if fewer configured)
+    const [s0, s1, s2, s3, s4] = [...specs, ...specs, ...specs].slice(0, 5);
+
+    // ─── Discussion schedule (23 turns ≈ 12-15 min spoken) ───────────────────
+    // maxPredict per round: R1=120 (2 sentences), R2=180 (3), R3=250 (4), R4=350 (5+), R5=450 (close)
+    const schedule: Array<{ agent: typeof manager; ctx: TurnContext }> = [
+      // ── Round 1: Opening takes (SHORT — 2 sentences, punchy) ──
+      { agent: manager, ctx: { isFirst: true,  isLast: false, round: 1, phase: 'open',   maxPredict: 130 } },
+      { agent: s0, ctx: { isFirst: false, isLast: false, round: 1, phase: 'react',  maxPredict: 120, hint: `Give your immediate gut reaction. What's the first thing that jumps out from your area? 2 punchy sentences.` } },
+      { agent: s1, ctx: { isFirst: false, isLast: false, round: 1, phase: 'react',  maxPredict: 120, hint: `Quick first take — what's your biggest concern or what excites you? 2 sentences.` } },
+      { agent: s2, ctx: { isFirst: false, isLast: false, round: 1, phase: 'react',  maxPredict: 120, hint: `Your opening read — what do you want on the table immediately? 2 sentences.` } },
+      { agent: s3, ctx: { isFirst: false, isLast: false, round: 1, phase: 'react',  maxPredict: 120, hint: `Fast reaction — what worries you or what do you love? 2 sentences max.` } },
+      { agent: s4, ctx: { isFirst: false, isLast: false, round: 1, phase: 'react',  maxPredict: 120, hint: `First instinct — what assumption needs challenging right now? 2 sentences.` } },
+
+      // ── Round 2: Cross-fire (SHORT-MED — direct agent-to-agent tension) ──
+      { agent: s1, ctx: { isFirst: false, isLast: false, round: 2, phase: 'challenge', maxPredict: 180, hint: `React directly to what ${s0?.name} just said. Push back or add sharp nuance. 2-3 sentences. Reference their words.` } },
+      { agent: s2, ctx: { isFirst: false, isLast: false, round: 2, phase: 'challenge', maxPredict: 180, hint: `Pick a side in the tension that's forming. Where do you stand and why? 2-3 sentences.` } },
+      { agent: manager, ctx: { isFirst: false, isLast: false, round: 2, phase: 'probe', maxPredict: 120, hint: `Ask the sharpest unasked question — something the team hasn't addressed yet. Be direct. 1-2 sentences.` } },
+      { agent: s3, ctx: { isFirst: false, isLast: false, round: 2, phase: 'react',  maxPredict: 180, hint: `Answer the manager's question from your specialist angle. Don't hedge. 2-3 sentences.` } },
+      { agent: s4, ctx: { isFirst: false, isLast: false, round: 2, phase: 'challenge', maxPredict: 180, hint: `Add what ${s3?.name} missed or challenge their answer directly. 2-3 sentences.` } },
+
+      // ── Round 3: Deep dive (MED — build arguments, raise structural issues) ──
+      { agent: s0, ctx: { isFirst: false, isLast: false, round: 3, phase: 'propose',    maxPredict: 260, hint: `Make your strongest case so far. Go deeper — give specific reasoning, examples, or real concerns.` } },
+      { agent: s2, ctx: { isFirst: false, isLast: false, round: 3, phase: 'counter',    maxPredict: 260, hint: `Challenge the direction forming. What is the team glossing over or fundamentally getting wrong?` } },
+      { agent: s4, ctx: { isFirst: false, isLast: false, round: 3, phase: 'probe',      maxPredict: 250, hint: `Stress-test what's been proposed. What breaks? What hasn't been validated? Be specific and a little uncomfortable about it.` } },
+      { agent: manager, ctx: { isFirst: false, isLast: false, round: 3, phase: 'probe', maxPredict: 150, hint: `Name the biggest unresolved tension in the room. Force the team to address it. Be sharp.` } },
+
+      // ── Round 4: Tension & resolution (MED-LONG — full arguments, real friction) ──
+      { agent: s1, ctx: { isFirst: false, isLast: false, round: 4, phase: 'deep-dive',  maxPredict: 350, hint: `This is your moment. Make your full case — what has the team not fully heard yet? Go deep.` } },
+      { agent: s3, ctx: { isFirst: false, isLast: false, round: 4, phase: 'defend',     maxPredict: 350, hint: `Push back on whoever you disagree with most. Back it up with expertise and specifics.` } },
+      { agent: s0, ctx: { isFirst: false, isLast: false, round: 4, phase: 'propose',    maxPredict: 300, hint: `Narrow toward a path. What should the team actually DO? What should be cut? Give a concrete position.` } },
+      { agent: s2, ctx: { isFirst: false, isLast: false, round: 4, phase: 'counter',    maxPredict: 280, hint: `Add your final constraints or conditions. What needs to be true for this to work?` } },
+
+      // ── Round 5: Final takes + manager close (LONG — conviction, decision, clarity) ──
+      { agent: s4, ctx: { isFirst: false, isLast: false, round: 5, phase: 'final-take', maxPredict: 380, hint: `Final verdict on the proposed direction. Is it realistic? What is your one non-negotiable condition for buy-in?` } },
+      { agent: s1, ctx: { isFirst: false, isLast: false, round: 5, phase: 'final-take', maxPredict: 350, hint: `Wrap up your perspective. What's the one thing you most want to see in phase one?` } },
+      { agent: s3, ctx: { isFirst: false, isLast: false, round: 5, phase: 'final-take', maxPredict: 340, hint: `Final word — what must the team absolutely not skip or cut corners on?` } },
+      { agent: manager, ctx: { isFirst: false, isLast: true,  round: 5, phase: 'close',  maxPredict: 450 } },
+    ];
+    // ─────────────────────────────────────────────────────────────────────────
 
     // Shared memory — every agent sees the full discussion so far
     const discussionHistory: Array<{ speaker: string; role: string; text: string }> = [];
 
     try {
-      for (let i = 0; i < turnOrder.length; i++) {
-        if (abortControllerRef.current.signal.aborted) break;
+      const ROUND_LABELS: Record<number, string> = {
+        1: '── Round 1: Opening Takes ──',
+        2: '── Round 2: Cross-Fire ──',
+        3: '── Round 3: Deep Dive ──',
+        4: '── Round 4: Debate & Tension ──',
+        5: '── Round 5: Convergence & Close ──',
+      };
+      let lastRound = 0;
 
-        const agent = turnOrder[i];
-        const isFirst = i === 0;
-        const isLast = i === turnOrder.length - 1;
+      for (const turn of schedule) {
+        if (abortControllerRef.current.signal.aborted) break;
+        if (!turn.agent) continue;
+
+        const { agent, ctx } = turn;
         const modelName = agent.modelName || ollamaDefaultModel;
 
-        // Show streaming indicator
+        // Insert round separator when round changes
+        if (ctx.round !== lastRound) {
+          lastRound = ctx.round;
+          setMessages(prev => [...prev, {
+            id: `round-sep-${ctx.round}-${Date.now()}`,
+            sender: 'System',
+            text: ROUND_LABELS[ctx.round] || `── Round ${ctx.round} ──`,
+            type: 'system-msg' as const,
+          }]);
+        }
+
         setActiveAgentName(agent.name);
         setCurrentStreamingText('');
 
-        // Add empty message to chat immediately — will fill in as text streams
-        const msgId = `${agent.name}-${Date.now()}-${i}`;
+        const msgId = `${agent.name}-${ctx.phase}-${Date.now()}`;
         setMessages(prev => [...prev, {
           id: msgId,
           sender: agent.name,
@@ -380,14 +445,27 @@ export default function Panel() {
         let agentText = '';
         try {
           const gen = agent.provider === 'cloud'
-            ? streamAgentTurnGemini(agent, userMsg, discussionHistory, { isFirst, isLast }, abortControllerRef.current.signal)
-            : streamAgentResponse(agent, userMsg, discussionHistory, { isFirst, isLast }, ollamaUrl, modelName, abortControllerRef.current.signal);
+            ? streamAgentTurnGemini(
+                { name: agent.name, role: agent.role, prompt: agent.prompt },
+                userMsg,
+                discussionHistory,
+                ctx,
+                abortControllerRef.current.signal
+              )
+            : streamAgentResponse(
+                { name: agent.name, role: agent.role, prompt: agent.prompt },
+                userMsg,
+                discussionHistory,
+                ctx,
+                ollamaUrl,
+                modelName,
+                abortControllerRef.current.signal
+              );
 
           for await (const chunk of gen) {
             if (abortControllerRef.current.signal.aborted) break;
             agentText += chunk;
             setCurrentStreamingText(agentText);
-            // Update the message in-place so text appears live in the chat panel
             setMessages(prev => prev.map(m => m.id === msgId ? { ...m, text: agentText } : m));
           }
         } catch (err: any) {
@@ -400,18 +478,13 @@ export default function Panel() {
         }
 
         if (!agentText.trim()) {
-          // Remove empty placeholder
           setMessages(prev => prev.filter(m => m.id !== msgId));
           continue;
         }
 
-        // Final update to message
         setMessages(prev => prev.map(m => m.id === msgId ? { ...m, text: agentText.trim() } : m));
-
-        // Add to shared conversation memory
         discussionHistory.push({ speaker: agent.name, role: agent.role, text: agentText.trim() });
 
-        // Enqueue TTS — runs fully independently from text display
         const agentSnapshot = { ...agent };
         const ttsPromise: Promise<string | null> = isMutedRef.current
           ? Promise.resolve(null)
@@ -442,7 +515,6 @@ export default function Panel() {
       }
       setCurrentStreamingText('');
       setActiveAgentName(null);
-      // Keep isProcessing true until TTS queue is also empty
       if (!ttsPlayingRef.current && ttsQueueRef.current.length === 0) {
         setIsProcessing(false);
       }
