@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { generatePanelDiscussion, generateTTS } from '../lib/gemini';
+import { MASTER_PANEL_PROMPT } from '../lib/prompts';
 import { Hexagon, SlidersHorizontal, Mic, Send, AudioLines, X, UserPlus, Trash2, Image as ImageIcon, Cpu, User, Star, Volume2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
@@ -13,12 +14,12 @@ const dummyImages = [
 ];
 
 const defaultAgents = [
-  { id: 0, name: "Nexus", role: "Manager", hex: "#3b82f6", img: dummyImages[0], score: 100 },
-  { id: 1, name: "Atlas", role: "Product Strategist", hex: "#ef4444", img: dummyImages[1], score: 100 },
-  { id: 2, name: "Veda", role: "System Architect", hex: "#10b981", img: dummyImages[2], score: 100 },
-  { id: 3, name: "Echo", role: "Execution Engineer", hex: "#a855f7", img: dummyImages[3], score: 100 },
-  { id: 4, name: "Nova", role: "UX Specialist", hex: "#f59e0b", img: dummyImages[4], score: 100 },
-  { id: 5, name: "Cipher", role: "Reality Checker", hex: "#06b6d4", img: dummyImages[5], score: 100 }
+  { id: 0, name: "Nexus", role: "Manager", hex: "#3b82f6", img: dummyImages[0], score: 100, voice: "Zephyr" },
+  { id: 1, name: "Atlas", role: "Product Strategist", hex: "#ef4444", img: dummyImages[1], score: 100, voice: "Fenrir" },
+  { id: 2, name: "Veda", role: "System Architect", hex: "#10b981", img: dummyImages[2], score: 100, voice: "Kore" },
+  { id: 3, name: "Echo", role: "Execution Engineer", hex: "#a855f7", img: dummyImages[3], score: 100, voice: "Charon" },
+  { id: 4, name: "Nova", role: "UX Specialist", hex: "#f59e0b", img: dummyImages[4], score: 100, voice: "Puck" },
+  { id: 5, name: "Cipher", role: "Reality Checker", hex: "#06b6d4", img: dummyImages[5], score: 100, voice: "Kore" }
 ];
 
 interface Message {
@@ -40,6 +41,13 @@ export default function Panel() {
       type: 'system-msg'
     }
   ]);
+
+  const formatMessageText = (text: string) => {
+    if (!text) return '';
+    // Replace [action] tags with a styled span, matching letters, numbers, spaces, and basic punctuation, avoiding markdown links
+    return text.replace(/\[([a-zA-Z0-9\s\-,.]+)\](?!\()/g, '<span class="reaction-tag">[$1]</span>');
+  };
+  const [systemPrompt, setSystemPrompt] = useState(MASTER_PANEL_PROMPT);
   const [input, setInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [activeAgentName, setActiveAgentName] = useState<string | null>(null);
@@ -123,7 +131,7 @@ export default function Panel() {
       let currentSpeaker = "";
       let currentMessageText = "";
 
-      for await (const chunk of generatePanelDiscussion(userMsg, agents, {}, abortControllerRef.current.signal)) {
+      for await (const chunk of generatePanelDiscussion(userMsg, agents, { systemInstruction: systemPrompt }, abortControllerRef.current.signal)) {
         if (abortControllerRef.current.signal.aborted) {
           break;
         }
@@ -263,8 +271,8 @@ export default function Panel() {
     }]);
   };
 
-  const playTTS = async (text: string) => {
-    const url = await generateTTS(text);
+  const playTTS = async (text: string, voiceName: string = 'Kore') => {
+    const url = await generateTTS(text, voiceName);
     if (url) {
       const audio = new Audio(url);
       audio.play();
@@ -324,7 +332,19 @@ export default function Panel() {
               <div key={msg.id} className={`message ${msg.type}`}>
                 {msg.type === 'agent-message' && (
                   <div className="agent-msg-name" style={{ color: msg.colorHex }}>
-                    <Cpu size={14} /> {msg.sender}
+                    <div className="flex items-center gap-2">
+                      <Cpu size={14} /> {msg.sender}
+                    </div>
+                    <button 
+                      onClick={() => {
+                        const agent = agents.find(a => a.name === msg.sender);
+                        playTTS(msg.text, agent?.voice || 'Kore');
+                      }} 
+                      className="text-gray-400 hover:text-white transition-colors ml-auto"
+                      title="Read Aloud"
+                    >
+                      <Volume2 size={14} />
+                    </button>
                   </div>
                 )}
                 {msg.type === 'user-message' && (
@@ -337,7 +357,7 @@ export default function Panel() {
                   <div className="markdown-body text-left w-full">
                     <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
                       <h3 className="text-xl font-bold text-white m-0">Final Project Plan</h3>
-                      <button onClick={() => playTTS(msg.text)} className="p-2 bg-blue-600 hover:bg-blue-500 rounded-full text-white transition-colors" title="Read Aloud">
+                      <button onClick={() => playTTS(msg.text, agents[0]?.voice || 'Zephyr')} className="p-2 bg-blue-600 hover:bg-blue-500 rounded-full text-white transition-colors" title="Read Aloud">
                         <Volume2 size={16} />
                       </button>
                     </div>
@@ -354,7 +374,7 @@ export default function Panel() {
                     )}
                   </div>
                 ) : (
-                  <div dangerouslySetInnerHTML={{ __html: msg.text }} />
+                  <div dangerouslySetInnerHTML={{ __html: formatMessageText(msg.text) }} />
                 )}
               </div>
             ))}
@@ -364,7 +384,7 @@ export default function Panel() {
                 <div className="agent-msg-name" style={{ color: activeAgent?.hex || '#ffffff' }}>
                   <Cpu size={14} /> {activeAgentName}
                 </div>
-                <div dangerouslySetInnerHTML={{ __html: currentStreamingText }} />
+                <div dangerouslySetInnerHTML={{ __html: formatMessageText(currentStreamingText) }} />
               </div>
             )}
 
@@ -430,8 +450,13 @@ export default function Panel() {
         <div id="settings-modal" style={{ display: 'flex', opacity: 1 }}>
           <div className="modal-content" style={{ transform: 'scale(1)' }}>
             <div className="settings-sidebar">
-              <div className="settings-sidebar-header">Neural Nodes</div>
+              <div className="settings-sidebar-header">System</div>
               <div className="sidebar-scroll">
+                <div className={`agent-tab ${activeEditIndex === -1 ? 'active' : ''}`} onClick={() => setActiveEditIndex(-1)}>
+                  <div className="tab-color-dot" style={{ color: '#fff', background: '#fff' }}></div>
+                  System Prompt
+                </div>
+                <div className="settings-sidebar-header mt-4">Neural Nodes</div>
                 {agents.map((a, i) => (
                   <div key={a.id} className={`agent-tab ${i === activeEditIndex ? 'active' : ''}`} onClick={() => setActiveEditIndex(i)}>
                     <div className="tab-color-dot" style={{ color: a.hex, background: a.hex }}></div>
@@ -444,13 +469,27 @@ export default function Panel() {
             <div className="settings-body">
               <div className="settings-header">
                 <div>
-                  <h2>Configure Agent</h2>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '5px' }}>Fine-tune persona, visuals, and directives.</p>
+                  <h2>{activeEditIndex === -1 ? 'System Configuration' : 'Configure Agent'}</h2>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '5px' }}>
+                    {activeEditIndex === -1 ? 'Edit the master prompt that orchestrates the panel.' : 'Fine-tune persona, visuals, and directives.'}
+                  </p>
                 </div>
                 <button onClick={() => setShowSettings(false)} className="btn-icon"><X /></button>
               </div>
 
-              {agents[activeEditIndex] && (
+              {activeEditIndex === -1 ? (
+                <div className="form-grid">
+                  <div className="form-group full">
+                    <label>Master System Prompt</label>
+                    <textarea 
+                      className="custom-input" 
+                      style={{ height: '500px', fontFamily: 'monospace', fontSize: '0.85rem' }}
+                      value={systemPrompt} 
+                      onChange={(e) => setSystemPrompt(e.target.value)} 
+                    />
+                  </div>
+                </div>
+              ) : agents[activeEditIndex] && (
                 <div className="form-grid">
                   <div className="form-group">
                     <label>Identity (Name)</label>
@@ -470,7 +509,22 @@ export default function Panel() {
                     }} />
                   </div>
 
-                  <div className="form-group full">
+                  <div className="form-group">
+                    <label>Voice</label>
+                    <select className="custom-input" value={agents[activeEditIndex].voice} onChange={(e) => {
+                      const newAgents = [...agents];
+                      newAgents[activeEditIndex].voice = e.target.value;
+                      setAgents(newAgents);
+                    }}>
+                      <option value="Puck">Puck</option>
+                      <option value="Charon">Charon</option>
+                      <option value="Kore">Kore</option>
+                      <option value="Fenrir">Fenrir</option>
+                      <option value="Zephyr">Zephyr</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group">
                     <label>Color Hex</label>
                     <input type="text" className="custom-input" value={agents[activeEditIndex].hex} onChange={(e) => {
                       const newAgents = [...agents];

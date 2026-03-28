@@ -10,6 +10,7 @@ export async function* generatePanelDiscussion(
     platformTarget?: string;
     requiredFeatures?: string[];
     userPreferences?: string;
+    systemInstruction?: string;
   } = {},
   signal?: AbortSignal
 ) {
@@ -18,7 +19,7 @@ PROJECT_REQUEST:
 ${topic}
 
 USER_PREFERENCES:
-${options.userPreferences || 'The first phase must feel like a real internal panel discussion with 5 agents and a manager. It must feel human, realistic, and technically grounded.'}
+${options.userPreferences || 'The first phase must feel like a real internal panel discussion with 5 agents and a manager. It must feel human, realistic, and technically grounded. CRITICAL: You MUST use natural human-like conversational elements. Include occasional reaction tags (e.g., [pauses], [sighs], [a little annoyed]), simulate partial overlaps (e.g., [cuts in]), and ensure agents do NOT agree instantly. Make the panel feel highly dynamic and realistic.'}
 
 PLATFORM_TARGET:
 ${options.platformTarget || 'Web app'}
@@ -42,7 +43,7 @@ Simulate a realistic 5-10 minutes internal panel meeting, then present the final
     contents: runtimeInstruction,
     config: {
       thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
-      systemInstruction: MASTER_PANEL_PROMPT,
+      systemInstruction: options.systemInstruction || MASTER_PANEL_PROMPT,
     }
   });
 
@@ -53,7 +54,7 @@ Simulate a realistic 5-10 minutes internal panel meeting, then present the final
   }
 }
 
-export async function generateTTS(text: string) {
+export async function generateTTS(text: string, voiceName: string = 'Kore') {
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
@@ -62,7 +63,7 @@ export async function generateTTS(text: string) {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
           voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: 'Kore' },
+            prebuiltVoiceConfig: { voiceName },
           },
         },
       },
