@@ -50,6 +50,13 @@ body, html {
     transition: background 0.3s, color 0.3s;
 }
 
+#root {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+}
+
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(150,150,150,0.3); border-radius: 10px; }
@@ -150,6 +157,7 @@ input::placeholder { color: var(--text-muted); }
 
 /* --- Right Area (Agent Grid) --- */
 #agent-grid {
+    flex: 1;
     padding: 40px; overflow-y: auto; background: var(--bg-base);
     display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; align-content: flex-start;
 }
@@ -200,11 +208,39 @@ input::placeholder { color: var(--text-muted); }
 .pwr-left { color: rgba(var(--agent-color-rgb), 1); }
 .pwr-right { color: var(--text-muted); opacity: 0.7; }
 
-.visualizer { display: flex; align-items: flex-end; gap: 3px; height: 12px; opacity: 0; transition: 0.3s; }
-.active .visualizer { opacity: 1; }
-.visualizer .bar { width: 3px; background: rgba(var(--agent-color-rgb), 1); border-radius: 2px; animation: audio-bar 0.4s infinite alternate ease-in-out; }
-.visualizer .bar:nth-child(2) { animation-delay: 0.1s; } .visualizer .bar:nth-child(3) { animation-delay: 0.2s; }
+.visualizer { display: flex; align-items: flex-end; gap: 3px; height: 28px; opacity: 0; transition: 0.3s; }
+.active .visualizer { opacity: 0.4; }
+.speaking .visualizer { opacity: 1; }
+.visualizer .bar { width: 3px; background: rgba(var(--agent-color-rgb), 1); border-radius: 2px; height: 3px; transition: height 0.05s ease; }
+.active:not(.speaking) .visualizer .bar { animation: audio-bar 0.4s infinite alternate ease-in-out; }
+.active:not(.speaking) .visualizer .bar:nth-child(2) { animation-delay: 0.1s; }
+.active:not(.speaking) .visualizer .bar:nth-child(3) { animation-delay: 0.2s; }
+.active:not(.speaking) .visualizer .bar:nth-child(4) { animation-delay: 0.15s; }
+.active:not(.speaking) .visualizer .bar:nth-child(5) { animation-delay: 0.25s; }
 @keyframes audio-bar { 0% { height: 3px; } 100% { height: 12px; } }
+
+/* Inline chat visualizer */
+.inline-viz {
+  display: inline-flex; align-items: flex-end; gap: 2px; height: 16px;
+  margin: 0 4px; vertical-align: middle;
+}
+.inline-viz .bar {
+  width: 3px; background: currentColor; border-radius: 2px; height: 3px;
+  transition: height 0.05s ease;
+  opacity: 0.85;
+}
+.inline-viz.generating .bar {
+  animation: audio-bar-sm 0.45s infinite alternate ease-in-out;
+}
+.inline-viz.generating .bar:nth-child(2) { animation-delay: 0.08s; }
+.inline-viz.generating .bar:nth-child(3) { animation-delay: 0.18s; }
+.inline-viz.generating .bar:nth-child(4) { animation-delay: 0.12s; }
+.inline-viz.generating .bar:nth-child(5) { animation-delay: 0.25s; }
+@keyframes audio-bar-sm { 0% { height: 2px; } 100% { height: 14px; } }
+
+.speaking { border-color: rgba(var(--agent-color-rgb), 1) !important; }
+.speaking .card-top::after { box-shadow: 0 15px 35px rgba(var(--agent-color-rgb), 0.9); }
+.speaking .agent-status { color: rgba(var(--agent-color-rgb), 1); text-shadow: 0 0 15px rgba(var(--agent-color-rgb), 0.7); }
 
 /* --- Settings Modal --- */
 #settings-modal {

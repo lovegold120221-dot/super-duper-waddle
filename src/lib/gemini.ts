@@ -3,10 +3,45 @@ import { MASTER_PANEL_PROMPT } from "./prompts";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
+// Per-agent turn generation via Gemini (used when agent provider === 'cloud')
+export async function* streamAgentTurnGemini(
+  agent: { name: string; role: string; prompt: string },
+  topic: string,
+  history: Array<{ speaker: string; role: string; text: string }>,
+  turnContext: { isFirst: boolean; isLast: boolean },
+  signal?: AbortSignal
+): AsyncGenerator<string> {
+  const historyBlock = history.length > 0
+    ? '\n\nDISCUSSION SO FAR:\n' + history.map(h => `[${h.speaker}]: ${h.text}`).join('\n\n')
+    : '';
+
+  const prompt = `You are ${agent.name}, ${agent.role}.${agent.prompt ? ` Character: ${agent.prompt}` : ''}${historyBlock}
+
+${turnContext.isFirst
+    ? `Open the panel discussion on: "${topic}". As lead, frame the challenge with energy and invite the team.`
+    : turnContext.isLast
+    ? `Synthesize the team's discussion and deliver a clear decisive recommendation as lead.`
+    : `React to what ${history[history.length - 1]?.speaker || 'the previous speaker'} just said and contribute your expert view as ${agent.role} on "${topic}".`}
+
+Speak naturally in 2-4 sentences. Human expert tone. No bullet points. No name introduction.`;
+
+  const stream = await ai.models.generateContentStream({
+    model: 'gemini-2.5-flash',
+    contents: prompt,
+    config: { thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL } }
+  });
+
+  for await (const chunk of stream) {
+    if (signal?.aborted) return;
+    if (chunk.text) yield chunk.text;
+  }
+}
+
 export async function* generatePanelDiscussion(
   topic: string, 
   agents: any[], 
   options: {
+    model?: string;
     platformTarget?: string;
     requiredFeatures?: string[];
     userPreferences?: string;
@@ -39,7 +74,7 @@ Simulate a realistic 5-10 minutes internal panel meeting, then present the final
 `;
 
   const responseStream = await ai.models.generateContentStream({
-    model: "gemini-3-flash-preview",
+    model: options.model || "gemini-3-flash-preview",
     contents: runtimeInstruction,
     config: {
       thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
