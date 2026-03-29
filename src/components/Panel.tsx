@@ -1240,7 +1240,7 @@ export default function Panel() {
       prompt: "Standard directive.",
       hex: col.hex,
       rgba: col.rgba,
-      img: <div style={{ width: 60, height: 60, borderRadius: '50%', background: col.hex, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold' }}>
+      img: <div className="agent-avatar-bubble" style={{ background: col.hex }}>
         {agents.length + 1}
       </div>,
       score: 100,
@@ -1435,7 +1435,7 @@ export default function Panel() {
                   </div>
                 )}
                 {msg.type === 'user-message' && (
-                  <div className="agent-msg-name" style={{ color: 'rgba(255,255,255,0.8)' }}>
+                  <div className="agent-msg-name agent-msg-name-user">
                     <User size={14} /> COMMANDER
                   </div>
                 )}
@@ -1515,7 +1515,7 @@ export default function Panel() {
 
         <div id="agent-grid">
           {agents.length === 0 ? (
-            <div style={{ color: 'var(--text-muted)', width: '100%', textAlign: 'center', padding: '40px' }}>
+            <div className="agent-grid-empty">
               All nodes offline. Initialize new agents in preferences.
             </div>
           ) : agents.map((a, i) => {
@@ -1541,7 +1541,7 @@ export default function Panel() {
                     </div>
                   </div>
                   <div className="agent-status">{isSpeaking ? '🎙 Speaking...' : isActive ? '⟳ Generating...' : 'Standby'}</div>
-                  <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', opacity: 0.6, marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div className="agent-model-label">
                     {a.provider === 'local' ? `🖥 ${a.modelName || ollamaDefaultModel}` : `☁ Gemini`}
                   </div>
                   <div className="power-row">
@@ -1556,9 +1556,9 @@ export default function Panel() {
       </main>
 
       {showMemoryBoard && (
-        <div id="settings-modal" style={{ display: 'flex', opacity: 1 }}>
-          <div className="modal-content" style={{ transform: 'scale(1)', flexDirection: 'column' }}>
-            <div className="settings-header" style={{ padding: '20px', borderBottom: '1px solid var(--border-color)', margin: 0 }}>
+        <div id="settings-modal" className="modal-open">
+          <div className="modal-content modal-content-col">
+            <div className="settings-header">
               <div>
                 <h2>Shared Memory Board</h2>
                 <p>Facts, assumptions, conflicts, decisions, and open questions.</p>
@@ -1569,10 +1569,10 @@ export default function Panel() {
               {memoryBoardContent ? (
                 <ReactMarkdown>{memoryBoardContent}</ReactMarkdown>
               ) : (
-                <div style={{ textAlign: 'center', color: 'var(--text-muted)', marginTop: '40px' }}>
-                  <AudioLines size={48} style={{ margin: '0 auto 15px auto', opacity: 0.2 }} />
+              <div className="memory-empty">
+                  <AudioLines size={48} className="memory-empty-icon" />
                   <p>The memory board is empty.</p>
-                  <p style={{ fontSize: '0.85rem', marginTop: '10px' }}>It will be populated at the end of the panel discussion.</p>
+                  <p className="memory-empty-hint">It will be populated at the end of the panel discussion.</p>
                 </div>
               )}
             </div>
@@ -1581,20 +1581,20 @@ export default function Panel() {
       )}
 
       {showSettings && (
-        <div id="settings-modal" style={{ display: 'flex', opacity: 1 }}>
-          <div className="modal-content" style={{ transform: 'scale(1)' }}>
+        <div id="settings-modal" className="modal-open">
+          <div className="modal-content modal-content-open">
             <div className="settings-sidebar">
               <div className="settings-sidebar-header">System</div>
               <div className="sidebar-scroll">
                 <div className={`agent-tab ${activeEditIndex === -1 ? 'active' : ''}`} onClick={() => setActiveEditIndex(-1)}>
-                  <div className="tab-color-dot" style={{ color: 'var(--text-main)', background: 'var(--text-main)' }}></div>
+                  <div className="tab-color-dot tab-color-dot-system"></div>
                   System Prompt
                 </div>
-                <div className={`agent-tab ${activeEditIndex === -2 ? 'active' : ''}`} onClick={() => setActiveEditIndex(-2)} style={{ '--agent-color-rgb': '59, 130, 246' } as any}>
-                  <Server size={14} style={{ flexShrink: 0 }} />
+                <div className={`agent-tab agent-tab-server ${activeEditIndex === -2 ? 'active' : ''}`} onClick={() => setActiveEditIndex(-2)}>
+                  <Server size={14} className="input-flex" style={{ flexShrink: 0 }} />
                   Server Config
                 </div>
-                <div className="settings-sidebar-header" style={{ marginTop: '20px' }}>Neural Nodes</div>
+                <div className="settings-sidebar-header sidebar-section-header">Neural Nodes</div>
                 {agents.map((a, i) => (
                   <div key={a.id} className={`agent-tab ${i === activeEditIndex ? 'active' : ''}`} onClick={() => setActiveEditIndex(i)} style={{ '--agent-color-rgb': a.rgba } as any}>
                     <div className="tab-color-dot" style={{ color: a.hex, background: a.hex }}></div>
@@ -1615,21 +1615,12 @@ export default function Panel() {
                     {activeEditIndex === -2 ? 'Configure local Ollama server connection and default model.' : activeEditIndex === -1 ? 'Edit the master prompt that orchestrates the panel.' : agents[activeEditIndex] ? 'Adjust identity parameters and visual aesthetics.' : 'Deploy a new unit to resume strategy simulation.'}
                   </p>
                 </div>
-                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <div className="settings-header-actions">
                   {activeEditIndex === -2 && (
-                    <button 
-                      onClick={saveCurrentSettings} 
+                    <button
+                      onClick={saveCurrentSettings}
                       disabled={isSavingSettings}
-                      className="custom-input" 
-                      style={{ 
-                        cursor: isSavingSettings ? 'not-allowed' : 'pointer', 
-                        background: settingsSaved ? 'var(--success)' : 'var(--accent-blue)', 
-                        color: 'white', 
-                        border: 'none',
-                        opacity: isSavingSettings ? 0.7 : 1,
-                        fontSize: '0.9rem',
-                        padding: '8px 16px'
-                      }}
+                      className={`btn-save-settings custom-input ${settingsSaved ? 'saved' : ''}`}
                     >
                       {isSavingSettings ? 'Saving...' : settingsSaved ? '✅ Saved' : '💾 Save Settings'}
                     </button>
@@ -1642,11 +1633,10 @@ export default function Panel() {
                 <div className="form-grid">
                   <div className="form-group full">
                     <label>Ollama Server URL</label>
-                    <div style={{ display: 'flex', gap: '10px' }}>
-                      <input type="text" className="custom-input" style={{ flex: 1 }} value={ollamaUrl} onChange={(e) => setOllamaUrl(e.target.value)} placeholder="http://localhost:11434" />
-                      <button 
-                        className="custom-input" 
-                        style={{ cursor: 'pointer', background: 'var(--accent-blue)', color: 'white', border: 'none', whiteSpace: 'nowrap', fontWeight: 600 }} 
+                    <div className="row-flex">
+                      <input type="text" className="custom-input input-flex" value={ollamaUrl} onChange={(e) => setOllamaUrl(e.target.value)} placeholder="http://localhost:11434" />
+                      <button
+                        className="custom-input btn-action"
                         onClick={() => refreshOllamaModels(ollamaUrl)}
                       >
                         Test &amp; Refresh
@@ -1656,9 +1646,9 @@ export default function Panel() {
 
                   <div className="form-group full">
                     <label>Connection Status</label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: ollamaStatus === 'connected' ? 'var(--success)' : ollamaStatus === 'checking' ? 'var(--warning)' : 'var(--danger)' }}></div>
-                      <span style={{ fontSize: '0.9rem' }}>
+                    <div className="row-flex-center">
+                      <div className={`status-dot ${ollamaStatus}`}></div>
+                      <span className="status-text">
                         {ollamaStatus === 'connected' ? `Connected — ${ollamaModels.length} model${ollamaModels.length !== 1 ? 's' : ''} available` : ollamaStatus === 'checking' ? 'Checking...' : 'Not connected'}
                       </span>
                     </div>
@@ -1686,27 +1676,25 @@ export default function Panel() {
                     </div>
                   </div>
 
-                  <div className="form-group full" style={{ marginTop: '10px', padding: '15px', background: 'var(--bg-input)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                  <div className="form-group full info-box">
                     <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6, margin: 0 }}>
                       <strong>Note:</strong> The Manager agent's Model Provider setting determines the engine for the entire panel discussion. If you encounter CORS errors, restart Ollama with:<br />
                       <code style={{ display: 'inline-block', marginTop: '6px', background: 'rgba(0,0,0,0.3)', padding: '4px 8px', borderRadius: '4px' }}>OLLAMA_ORIGINS=* ollama serve</code>
                     </p>
                   </div>
 
-                  <div className="form-group full" style={{ marginTop: '10px', padding: '15px', background: 'var(--bg-input)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                  <div className="form-group full info-box">
                     <label>Device ID (Anonymous User)</label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <input 
-                        type="text" 
-                        className="custom-input" 
-                        style={{ flex: 1, fontFamily: 'monospace', fontSize: '0.85rem' }} 
-                        value={getDeviceId()} 
-                        readOnly 
+                    <div className="row-flex-center">
+                      <input
+                        type="text"
+                        className="custom-input input-mono"
+                        value={getDeviceId()}
+                        readOnly
                         title="Your unique device identifier for saving settings"
                       />
                       <button
-                        className="custom-input"
-                        style={{ cursor: 'pointer', background: 'var(--accent-blue)', color: 'white', border: 'none', fontSize: '0.8rem', padding: '6px 12px' }}
+                        className="custom-input btn-action"
                         onClick={() => {
                           navigator.clipboard.writeText(getDeviceId());
                           alert('Device ID copied to clipboard!');
@@ -1716,29 +1704,27 @@ export default function Panel() {
                         📋 Copy
                       </button>
                     </div>
-                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '8px 0 0 0', lineHeight: 1.4 }}>
-                      Your settings are saved anonymously using this device identifier. Each device has its own unique settings.
-                    </p>
+                    <div className="info-box-sm"><p>Your settings are saved anonymously using this device identifier. Each device has its own unique settings.</p></div>
+                  </div>
                   </div>
 
-                  <div className="form-group full" style={{ marginTop: '10px', padding: '15px', background: 'var(--bg-input)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                  <div className="form-group full info-box">
                     <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6, margin: 0 }}>
                       <strong>Note:</strong> The Manager agent's Model Provider setting determines the engine for the entire panel discussion. If you encounter CORS errors, restart Ollama with:<br />
                       <code style={{ display: 'inline-block', marginTop: '6px', background: 'rgba(0,0,0,0.3)', padding: '4px 8px', borderRadius: '4px' }}>OLLAMA_ORIGINS=* ollama serve</code>
                     </p>
                   </div>
 
-                  <div style={{ marginTop: '30px', paddingTop: '20px', borderTop: '1px solid var(--border-color)' }}>
-                    <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '20px' }}>🔊 Qwen3-TTS (Local Voice)</h3>
+                  <div className="section-divider">
+                    <h3 className="section-heading">🔊 Qwen3-TTS (Local Voice)</h3>
                   </div>
 
                   <div className="form-group full">
                     <label>Qwen3-TTS Server URL</label>
-                    <div style={{ display: 'flex', gap: '10px' }}>
-                      <input type="text" className="custom-input" style={{ flex: 1 }} value={qwenTtsUrl} onChange={(e) => setQwenTtsUrl(e.target.value)} placeholder="http://localhost:7861" />
+                    <div className="row-flex">
+                      <input type="text" className="custom-input input-flex" value={qwenTtsUrl} onChange={(e) => setQwenTtsUrl(e.target.value)} placeholder="http://localhost:7861" />
                       <button
-                        className="custom-input"
-                        style={{ cursor: 'pointer', background: 'var(--accent-blue)', color: 'white', border: 'none', whiteSpace: 'nowrap', fontWeight: 600 }}
+                        className="custom-input btn-action"
                         onClick={async () => {
                           setQwenTtsStatus('unknown');
                           try {
@@ -1755,9 +1741,9 @@ export default function Panel() {
 
                   <div className="form-group full">
                     <label>Connection Status</label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: qwenTtsStatus === 'connected' ? 'var(--success)' : qwenTtsStatus === 'unknown' ? 'var(--text-muted)' : 'var(--danger)' }}></div>
-                      <span style={{ fontSize: '0.9rem' }}>
+                    <div className="row-flex-center">
+                      <div className={`status-dot ${qwenTtsStatus}`}></div>
+                      <span className="status-text">
                         {qwenTtsStatus === 'connected' ? '✅ Connected — Qwen3-TTS-0.6B ready (Default)' : qwenTtsStatus === 'unknown' ? '⚠️ Not tested — click Test (Default TTS)' : '❌ Not connected — start with: python qwen_server_simple.py (Default)'}
                       </span>
                     </div>
@@ -1765,33 +1751,32 @@ export default function Panel() {
 
                   <div className="form-group full">
                     <label>Prebuilt Voices</label>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    <div className="row-flex-wrap">
                       {QWEN_VOICES.map(v => (
-                        <span key={v.id} style={{ padding: '6px 12px', background: 'var(--bg-input)', border: '1px solid var(--border-color)', borderRadius: '8px', fontSize: '0.85rem' }}>
+                        <span key={v.id} className="badge-pill">
                           <strong>{v.name}</strong> — {v.desc}
                         </span>
                       ))}
                     </div>
                   </div>
 
-                  <div className="form-group full" style={{ marginTop: '10px', padding: '15px', background: 'var(--bg-input)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                  <div className="form-group full info-box">
                     <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6, margin: 0 }}>
                       <strong>Default:</strong> All agents use Qwen3 TTS by default for local voice synthesis. You can change to Cartesia or Gemini voices in any agent's Voice Profile dropdown. The TTS provider is auto-detected from the voice selection.
                     </p>
                   </div>
 
                   {/* ─── Cartesia AI ─── */}
-                  <div style={{ marginTop: '30px', paddingTop: '20px', borderTop: '1px solid var(--border-color)' }}>
-                    <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '20px' }}>🎙️ Cartesia AI (Cloud Voice)</h3>
+                  <div className="section-divider">
+                    <h3 className="section-heading">🎙️ Cartesia AI (Cloud Voice)</h3>
                   </div>
 
                   <div className="form-group full">
                     <label>Cartesia API Key</label>
-                    <div style={{ display: 'flex', gap: '10px' }}>
+                    <div className="row-flex">
                       <input
                         type="password"
-                        className="custom-input"
-                        style={{ flex: 1 }}
+                        className="custom-input input-flex"
                         value={cartesiaApiKey}
                         onChange={(e) => {
                           setCartesiaApiKey(e.target.value);
@@ -1801,8 +1786,7 @@ export default function Panel() {
                         placeholder="sk_car_..."
                       />
                       <button
-                        className="custom-input"
-                        style={{ cursor: 'pointer', background: 'var(--accent-blue)', color: 'white', border: 'none', whiteSpace: 'nowrap', fontWeight: 600 }}
+                        className="custom-input btn-action"
                         onClick={async () => {
                           setCartesiaStatus('unknown');
                           const ok = await checkCartesiaKey(cartesiaApiKey);
@@ -1816,32 +1800,31 @@ export default function Panel() {
 
                   <div className="form-group full">
                     <label>Connection Status</label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: cartesiaStatus === 'connected' ? 'var(--success)' : cartesiaStatus === 'unknown' ? 'var(--text-muted)' : 'var(--danger)' }}></div>
-                      <span style={{ fontSize: '0.9rem' }}>
+                    <div className="row-flex-center">
+                      <div className={`status-dot ${cartesiaStatus}`}></div>
+                      <span className="status-text">
                         {cartesiaStatus === 'connected' ? 'Connected — Cartesia Sonic-3 ready' : cartesiaStatus === 'unknown' ? 'Not tested — click Test' : 'Invalid API key or network error'}
                       </span>
                     </div>
                   </div>
 
-                  <div className="form-group full" style={{ marginTop: '10px', padding: '15px', background: 'var(--bg-input)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                  <div className="form-group full info-box">
                     <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6, margin: 0 }}>
                       <strong>100 voices available.</strong> Select any Cartesia voice in an agent's Voice Profile dropdown. Voices are grouped by language and gender. Default agents use pre-assigned unique Cartesia voices.
                     </p>
                   </div>
 
                   {/* ─── Gemini TTS ─── */}
-                  <div style={{ marginTop: '30px', paddingTop: '20px', borderTop: '1px solid var(--border-color)' }}>
-                    <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '20px' }}>☁️ Gemini TTS (Google Cloud)</h3>
+                  <div className="section-divider">
+                    <h3 className="section-heading">☁️ Gemini TTS (Google Cloud)</h3>
                   </div>
 
                   <div className="form-group full">
                     <label>Gemini API Key</label>
-                    <div style={{ display: 'flex', gap: '10px' }}>
-                      <input type="password" className="custom-input" style={{ flex: 1 }} value={process.env.GEMINI_API_KEY || ''} disabled placeholder="Set GEMINI_API_KEY in .env file" />
+                    <div className="row-flex">
+                      <input type="password" className="custom-input input-flex" value={process.env.GEMINI_API_KEY || ''} disabled placeholder="Set GEMINI_API_KEY in .env file" />
                       <button
-                        className="custom-input"
-                        style={{ cursor: 'pointer', background: 'var(--accent-blue)', color: 'white', border: 'none', whiteSpace: 'nowrap', fontWeight: 600 }}
+                        className="custom-input btn-action"
                         onClick={async () => {
                           setGeminiTtsStatus('unknown');
                           try {
@@ -1857,39 +1840,37 @@ export default function Panel() {
 
                   <div className="form-group full">
                     <label>Connection Status</label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: geminiTtsStatus === 'connected' ? 'var(--success)' : geminiTtsStatus === 'unknown' ? 'var(--text-muted)' : 'var(--danger)' }}></div>
-                      <span style={{ fontSize: '0.9rem' }}>
+                    <div className="row-flex-center">
+                      <div className={`status-dot ${geminiTtsStatus}`}></div>
+                      <span className="status-text">
                         {geminiTtsStatus === 'connected' ? '✅ Connected — Gemini TTS ready' : geminiTtsStatus === 'unknown' ? '⚠️ Not tested — click Test' : '❌ Invalid API key or network error'}
                       </span>
                     </div>
                   </div>
 
-                  <div className="form-group full" style={{ marginTop: '10px', padding: '15px', background: 'var(--bg-input)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                  <div className="form-group full info-box">
                     <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6, margin: 0 }}>
                       <strong>7 voices available.</strong> Google Gemini TTS with high-quality voice synthesis. Uses your Gemini API key for cloud-based text-to-speech.
                     </p>
                   </div>
 
                   {/* ─── TADA TTS ─── */}
-                  <div style={{ marginTop: '30px', paddingTop: '20px', borderTop: '1px solid var(--border-color)' }}>
-                    <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '20px' }}>🎤 TADA TTS (Local — Hume AI)</h3>
+                  <div className="section-divider">
+                    <h3 className="section-heading">🎤 TADA TTS (Local — Hume AI)</h3>
                   </div>
 
                   <div className="form-group full">
                     <label>TADA Server URL</label>
-                    <div style={{ display: 'flex', gap: '10px' }}>
+                    <div className="row-flex">
                       <input
                         type="text"
-                        className="custom-input"
-                        style={{ flex: 1 }}
+                        className="custom-input input-flex"
                         value={tadaTtsUrl}
                         onChange={(e) => { setTadaTtsUrl(e.target.value); setTadaTtsStatus('unknown'); }}
                         placeholder="http://localhost:7862"
                       />
                       <button
-                        className="custom-input"
-                        style={{ cursor: 'pointer', background: 'var(--accent-blue)', color: 'white', border: 'none', whiteSpace: 'nowrap', fontWeight: 600 }}
+                        className="custom-input btn-action"
                         onClick={async () => {
                           setTadaTtsStatus('unknown');
                           const ok = await checkTadaHealth(tadaTtsUrl);
@@ -1903,9 +1884,9 @@ export default function Panel() {
 
                   <div className="form-group full">
                     <label>Connection Status</label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: tadaTtsStatus === 'connected' ? 'var(--success)' : tadaTtsStatus === 'unknown' ? 'var(--text-muted)' : 'var(--danger)' }}></div>
-                      <span style={{ fontSize: '0.9rem' }}>
+                    <div className="row-flex-center">
+                      <div className={`status-dot ${tadaTtsStatus}`}></div>
+                      <span className="status-text">
                         {tadaTtsStatus === 'connected' ? '✅ Connected — TADA TTS ready' : tadaTtsStatus === 'unknown' ? '⚠️ Not tested — click Test' : '❌ Not connected — start with: python tada_server.py'}
                       </span>
                     </div>
@@ -1913,38 +1894,37 @@ export default function Panel() {
 
                   <div className="form-group full">
                     <label>Available Voices</label>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    <div className="row-flex-wrap">
                       {TADA_VOICES.map(v => (
-                        <span key={v.id} style={{ padding: '6px 12px', background: 'var(--bg-input)', border: '1px solid var(--border-color)', borderRadius: '8px', fontSize: '0.85rem' }}>
+                        <span key={v.id} className="badge-pill">
                           <strong>{v.name}</strong> — {v.desc}
                         </span>
                       ))}
                     </div>
                   </div>
 
-                  <div className="form-group full" style={{ marginTop: '10px', padding: '15px', background: 'var(--bg-input)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                  <div className="form-group full info-box">
                     <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6, margin: 0 }}>
                       <strong>Hume AI TADA-1B</strong> — Local zero-shot voice cloning using Meta Llama 3.2. Each voice uses a reference WAV file in <code>tada_voices/</code>. Requires GPU for best performance. Start with: <code>python tada_server.py</code>
                     </p>
                   </div>
                 </div>
               ) : agents.length === 0 ? (
-                <div style={{ display: 'flex', flex: 1, justifyContent: 'center', alignItems: 'center', flexDirection: 'column', color: 'var(--text-muted)', marginTop: '60px' }}>
-                  <UserX size={48} style={{ marginBottom: '15px', opacity: 0.5 }} />
-                  <h2 style={{ color: 'var(--text-main)', fontWeight: 600, marginBottom: '8px' }}>No Agents Online</h2>
-                  <p style={{ fontSize: '0.95rem' }}>Deploy a new unit to resume strategy simulation.</p>
-                  <button onClick={() => setShowSettings(false)} className="custom-input" style={{ marginTop: '24px', width: 'auto', cursor: 'pointer', background: 'var(--accent-blue)', color: 'white', border: 'none' }}>Close Window</button>
+                <div className="no-agents-state">
+                  <UserX size={48} className="memory-empty-icon" />
+                  <h2 className="no-agents-heading">No Agents Online</h2>
+                  <p className="no-agents-hint">Deploy a new unit to resume strategy simulation.</p>
+                  <button onClick={() => setShowSettings(false)} className="custom-input btn-close-window">Close Window</button>
                 </div>
               ) : activeEditIndex === -1 ? (
                 <div className="form-grid">
                   <div className="form-group full">
                     <label>Master System Prompt</label>
                     <textarea
-                      className="custom-input"
+                      className="custom-input textarea-system-prompt"
                       title="Master System Prompt"
                       aria-label="Master System Prompt"
                       placeholder="Enter the master orchestration prompt..."
-                      style={{ height: '500px', fontFamily: 'monospace', fontSize: '0.85rem' }}
                       value={systemPrompt}
                       onChange={(e) => setSystemPrompt(e.target.value)}
                     />
@@ -2093,7 +2073,7 @@ export default function Panel() {
                               const reader = new FileReader();
                               reader.onloadend = () => {
                                 const newAgents = [...agents];
-                                newAgents[activeEditIndex].img = <img src={reader.result as string} alt={agents[activeEditIndex].name} style={{ width: 60, height: 60, borderRadius: '50%' }} />;
+                                newAgents[activeEditIndex].img = <img src={reader.result as string} alt={agents[activeEditIndex].name} className="avatar-img" />;
                                 setAgents(newAgents);
                               };
                               reader.readAsDataURL(file);

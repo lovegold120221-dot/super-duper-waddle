@@ -475,6 +475,100 @@ textarea.custom-input { resize: vertical; min-height: 80px; }
 .delete-btn { background: var(--danger-bg); color: var(--danger); border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 8px; transition: 0.2s; }
 .delete-btn:hover { background: var(--danger); color: white; }
 
+/* ─── Settings panel utility classes (replaces inline styles) ─── */
+/* Modal open states */
+.modal-open { display: flex !important; opacity: 1 !important; }
+.modal-content-col { transform: scale(1); flex-direction: column; }
+.modal-content-open { transform: scale(1); }
+
+/* Memory board empty state */
+.memory-empty { text-align: center; color: var(--text-muted); margin-top: 40px; }
+.memory-empty-icon { margin: 0 auto 15px auto; opacity: 0.2; display: block; }
+.memory-empty-hint { font-size: 0.85rem; margin-top: 10px; }
+
+/* Settings header action row */
+.settings-header-actions { display: flex; gap: 10px; align-items: center; }
+
+/* Save settings button */
+.btn-save-settings { cursor: pointer; background: var(--accent-blue); color: white; border: none; font-size: 0.9rem; padding: 8px 16px; border-radius: 10px; transition: 0.2s; }
+.btn-save-settings.saved { background: var(--success); }
+.btn-save-settings:disabled { cursor: not-allowed; opacity: 0.7; }
+
+/* Sidebar tab for server config (accent blue) */
+.agent-tab-server { --agent-color-rgb: 59, 130, 246; }
+
+/* Sidebar section spacing */
+.sidebar-section-header { margin-top: 20px; }
+
+/* Tab colour dot overrides */
+.tab-color-dot-system { color: var(--text-main); background: var(--text-main); }
+
+/* Inline flex row with gap */
+.row-flex { display: flex; gap: 10px; }
+.row-flex-center { display: flex; align-items: center; gap: 8px; }
+.row-flex-wrap { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Flex-grow input */
+.input-flex { flex: 1; }
+.input-mono { flex: 1; font-family: monospace; font-size: 0.85rem; }
+
+/* Primary action button (Test / Test & Refresh / Copy) */
+.btn-action { cursor: pointer; background: var(--accent-blue); color: white; border: none; white-space: nowrap; font-weight: 600; border-radius: 10px; padding: 12px 16px; font-size: 0.95rem; transition: 0.2s; }
+.btn-action:hover { filter: brightness(1.1); }
+
+/* Status indicator row */
+.status-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.status-dot.connected { background: var(--success); }
+.status-dot.disconnected { background: var(--danger); }
+.status-dot.unknown, .status-dot.checking { background: var(--text-muted); }
+.status-text { font-size: 0.9rem; }
+
+/* Pill/badge for model/voice lists */
+.badge-pill { padding: 6px 12px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 8px; font-size: 0.85rem; }
+.badge-muted { color: var(--text-muted); font-size: 0.85rem; }
+
+/* Info/note box */
+.info-box { margin-top: 10px; padding: 15px; background: var(--bg-input); border-radius: 10px; border: 1px solid var(--border-color); }
+.info-box p { font-size: 0.85rem; color: var(--text-muted); line-height: 1.6; margin: 0; }
+.info-box code { display: inline-block; margin-top: 6px; background: rgba(0,0,0,0.3); padding: 4px 8px; border-radius: 4px; }
+.info-box-sm p { font-size: 0.75rem; color: var(--text-muted); margin: 8px 0 0 0; line-height: 1.4; }
+
+/* Section divider + heading (Qwen / Cartesia / Gemini / TADA) */
+.section-divider { margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--border-color); }
+.section-heading { font-size: 1.1rem; font-weight: 600; margin-bottom: 20px; }
+
+/* Agent grid empty state */
+.agent-grid-empty { color: var(--text-muted); width: 100%; text-align: center; padding: 40px; }
+
+/* Agent card model label */
+.agent-model-label { font-size: 0.62rem; color: var(--text-muted); opacity: 0.6; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Agent avatar bubble (new agent default) */
+.agent-avatar-bubble { width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; }
+
+/* No-agents state in settings */
+.no-agents-state { display: flex; flex: 1; justify-content: center; align-items: center; flex-direction: column; color: var(--text-muted); margin-top: 60px; }
+.no-agents-heading { color: var(--text-main); font-weight: 600; margin-bottom: 8px; }
+.no-agents-hint { font-size: 0.95rem; }
+.btn-close-window { margin-top: 24px; width: auto; cursor: pointer; background: var(--accent-blue); color: white; border: none; }
+
+/* System prompt textarea */
+.textarea-system-prompt { height: 500px; font-family: monospace; font-size: 0.85rem; }
+
+/* File upload hidden input */
+.input-hidden { display: none; }
+
+/* Uploaded avatar image */
+.avatar-img { width: 60px; height: 60px; border-radius: 50%; }
+
+/* ImageIcon inside upload zone */
+.upload-icon { margin: 0 auto 10px auto; color: var(--text-muted); display: block; }
+.upload-hint { font-size: 0.9rem; color: var(--text-muted); }
+
+/* Agent message name - user variant */
+.agent-msg-name-user { color: rgba(255,255,255,0.8); }
+
+
 /* =========================================
    MOBILE RESPONSIVENESS OVERRIDES 
    ========================================= */
