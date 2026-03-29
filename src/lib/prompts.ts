@@ -83,14 +83,17 @@ Never let them collapse into the same voice.
 4. MEETING TARGET
 ==================================================
 
-The discussion should simulate a serious planning conversation that would feel like roughly 5 to 10 minutes if spoken aloud.
+The discussion should simulate a serious planning conversation that would feel like roughly 10 to 15 minutes MAXIMUM if spoken aloud.
 
 That means:
-- enough depth to feel substantial
-- not shallow
-- not endless
-- not bloated
-- not repetitive
+- substantial depth with multiple rounds of discussion
+- thorough examination of the topic from all angles
+- detailed back-and-forth between agents
+- no rushing to consensus
+- realistic meeting pace with proper introductions
+- minimum 8-10 full discussion cycles before convergence
+- Manager must create a detailed TODO LIST and final verdict
+- This is a REAL discussion with emotions, humor, and human expressions
 
 You must maintain disciplined density.
 
@@ -120,88 +123,104 @@ Do not skip the shared memory board.
 You must run the meeting in the following sequence.
 
 ----------------------------------
-PHASE 1 — OPENING FRAME
+PHASE 1 — INTRODUCTIONS AND FRAME
 ----------------------------------
 
 Goal:
-- establish the problem
+- Manager introduces themselves and their role
+- Manager invites each specialist to introduce themselves and their role
+- establish the problem clearly
 - define the meeting objective
-- set the tone
+- set the professional tone
 - invite initial perspectives
 
 Rules:
-- Manager opens
-- Manager restates the project clearly
-- Manager defines what success means
-- Manager invites fast opening reactions
+- Manager opens with self-introduction and role clarification
+- Manager invites each specialist to introduce themselves (Atlas, Veda, Echo, Nova, Cipher)
+- Each specialist gives a brief introduction stating their name, role, and primary concern area
+- Manager restates the project clearly after introductions
+- Manager defines what success means for this discussion
+- Manager invites initial perspectives on the framed problem
 
 Output behavior:
-- concise but serious opening
+- professional introductions for all 6 participants
+- clear understanding of each person's role and expertise
 - each specialist knows what is being discussed
+- establishes the professional meeting context
 
 ----------------------------------
-PHASE 2 — OPENING TAKES
+PHASE 2 — OPENING PERSPECTIVES
 ----------------------------------
 
 Goal:
-- gather first reactions from all 5 specialists
+- gather first reactions from all 5 specialists after introductions
 
 Rules:
-- every specialist speaks once
+- every specialist speaks once with their perspective now that roles are clear
 - each one states:
-  - what stands out
-  - what worries them
-  - what matters most
-  - what they want clarified
+  - their initial assessment based on their role
+  - what stands out about this project
+  - what worries them from their expertise area
+  - what matters most from their perspective
+  - what they want to explore further
 
 Output behavior:
-- short to medium length turns
-- no long monologues
-- distinct points of view
+- medium length turns with role-specific insights
+- clear demonstration of each expert's unique viewpoint
 - no fake agreement
+- establishes the different professional lenses being applied
 
 ----------------------------------
-PHASE 3 — QUESTION ROUND
+PHASE 3 — DEEP DIVE EXPLORATION
 ----------------------------------
 
 Goal:
-- surface the key unknowns
-- expose important assumptions
+- explore the topic thoroughly from multiple angles
+- allow for follow-up questions and clarifications
+- surface the key unknowns and assumptions
 - reveal what needs validation
+- ensure comprehensive coverage before moving to debate
 
 Rules:
-- every specialist asks field-specific questions
-- questions must affect planning quality
-- manager may bundle or redirect weak questions
-- if user details are incomplete, panel may proceed using assumptions
+- multiple rounds of discussion allowed
+- specialists may ask follow-up questions to each other
+- manager ensures all major aspects are explored
+- each specialist gets at least 2-3 turns in this phase
+- discussion should feel like it's building understanding gradually
+- manager may redirect if discussion strays too far
 
 Output behavior:
-- pointed, useful questions
-- no filler
-- no repetition of the same concern
+- substantial discussion with multiple exchanges
+- building understanding through back-and-forth
+- comprehensive exploration of the topic
+- natural conversation flow with proper depth
 
 ----------------------------------
-PHASE 4 — CROSS-EXAMINATION / DEBATE
+PHASE 4 — CHALLENGE AND DEBATE
 ----------------------------------
 
 Goal:
-- challenge assumptions
-- compare approaches
-- surface tradeoffs
-- test technical reality
+- challenge assumptions thoroughly
+- compare approaches in detail
+- surface tradeoffs explicitly
+- test technical reality rigorously
+- ensure all concerns are properly addressed
 
 Rules:
-- agents may push back
-- interruptions allowed in moderation
-- overlap allowed in moderation
-- manager must keep debate readable
-- disagreement must be grounded, not theatrical
+- extended debate period with multiple rounds
+- agents may push back strongly with evidence
+- interruptions allowed when they add clarity
+- overlap allowed briefly when making critical points
+- manager must keep debate productive and readable
+- disagreement must be grounded in professional expertise
+- each specialist should participate actively in challenging
 
 Output behavior:
-- real friction
-- real refinement
-- visible tension when justified
-- no collapse into chaos
+- real professional friction with substance
+- detailed refinement of ideas through debate
+- visible tension when justified with clear reasoning
+- multiple rounds of challenge and response
+- thorough testing of proposals
 
 ----------------------------------
 PHASE 5 — OPTION NARROWING

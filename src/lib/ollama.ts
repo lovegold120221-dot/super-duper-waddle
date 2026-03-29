@@ -20,7 +20,7 @@ export async function* streamAgentResponse(
   agent: AgentTurn,
   topic: string,
   history: Array<{ speaker: string; role: string; text: string }>,
-  turnContext: { isFirst: boolean; isLast: boolean },
+  turnContext: { isFirst: boolean; isLast: boolean; round?: number },
   ollamaUrl: string,
   modelName: string,
   signal?: AbortSignal
@@ -35,18 +35,21 @@ export async function* streamAgentResponse(
 ${historyBlock}
 
 SPEAKING RULES (non-negotiable):
-• Speak in 2-4 sentences — natural expert spoken voice, NOT writing
+• Speak in 1-2 sentences — fast, lively, natural expert spoken voice
 • React DIRECTLY to what the previous speaker said
-• Use natural speech patterns: "Look,", "Here's the thing —", "Actually,", contractions
+• Use natural speech patterns with humor: "*sighs*", "*chuckles*", "*facepalm*", "Look,", "Here's the thing —", "Actually,", "Oh great, another..."
 • NEVER use bullet points, headers, or markdown formatting
 • NEVER start with your own name
-• Sound like a human expert with real opinions and stakes`;
+• Sound like a human expert with real opinions, stakes, and a sense of humor
+• Mix professional insight with personality - be engaging and substantive
+• Use natural human expressions liberally: "*nods thoughtfully*", "*raises eyebrow*", "*pauses*", "*leans forward*"
+• Quick reactions and rapid back-and-forth`;
 
   const turnInstruction = turnContext.isFirst
-    ? `Topic for this session: "${topic}"\n\nYou're leading this meeting. Open with energy — frame the core challenge, say what the team must focus on, and kick off the discussion. Be direct and confident. 2-4 sentences.`
+    ? `Topic for this session: "${topic}"\n\nYou're leading this meeting. CRITICAL: Start with proper introductions. First introduce yourself as Nexus the Manager with some humor, then invite each specialist (Atlas, Veda, Echo, Nova, Cipher) to introduce themselves and their roles. After all introductions, frame the core challenge with energy and define what success looks like. This should be a substantial opening that establishes the professional meeting context. 4-6 sentences for the opening, then guide introductions. Keep it engaging but professional.`
     : turnContext.isLast
-    ? `You've heard from the full team on "${topic}". Synthesize the strongest points, acknowledge the tension, and make a clear decisive recommendation as leader. Close with conviction. 3-5 sentences.`
-    : `${history.length > 0 ? `${history[history.length - 1].speaker} just said: "${history[history.length - 1].text.substring(0, 250)}"\n\n` : ''}React to that and add your expert take as ${agent.role} on "${topic}". 2-4 sentences, be specific.`;
+    ? `You've heard from the full team on "${topic}". Synthesize the strongest points, acknowledge the tension, and make a clear decisive recommendation as leader. Close with conviction. This should feel like a thorough manager summary after a 10-15 minute discussion. Now you can give a full detailed idea with your complete plan. 4-6 sentences.`
+    : `${history.length > 0 ? `${history[history.length - 1].speaker} just said: "${history[history.length - 1].text.substring(0, 250)}"\n\n` : ''}React to that and add your expert take as ${agent.role} on "${topic}". This is round ${turnContext.round || 1} of the discussion, so build upon previous points and add new insights. Keep it to 1-2 sentences with your characteristic humor, emotions, and natural human expressions. Use reactions like "*sighs*", "*chuckles*", "*facepalm*", "*nods thoughtfully*" to make it feel real. Fast and lively responses! Save your full detailed ideas for the final convergence.`;
 
   const res = await fetch(`${ollamaUrl}/api/generate`, {
     method: 'POST',
@@ -76,15 +79,21 @@ SPEAKING RULES (non-negotiable):
 
   while (true) {
     const { done, value } = await reader.read();
-    if (done) break;
+    if (done) {
+      console.log('Ollama stream completed naturally');
+      break;
+    }
     const text = decoder.decode(value, { stream: true });
     for (const line of text.split('\n')) {
       if (!line.trim()) continue;
       try {
         const json = JSON.parse(line);
         // Skip thinking tokens (qwen3 uses a separate `thinking` field; `response` is empty during thinking)
-        if (json.response) yield json.response;
-        if (json.done) return;
+        if (json.response) {
+          console.log('Ollama chunk received:', json.response.substring(0, 50) + '...');
+          yield json.response;
+        }
+        // Don't return early on json.done - let the natural stream completion handle it
       } catch { /* partial JSON line */ }
     }
   }

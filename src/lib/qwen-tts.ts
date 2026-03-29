@@ -4,13 +4,15 @@ export async function generateQwenTTS(
   serverUrl: string = 'http://localhost:7861'
 ): Promise<string | null> {
   try {
-    const formData = new FormData();
-    formData.append('text', text);
-    formData.append('voice_id', voiceId);
-
-    const res = await fetch(`${serverUrl}/generate`, {
+    const res = await fetch(`${serverUrl}/`, {
       method: 'POST',
-      body: formData
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text: text,
+        voice: voiceId
+      })
     });
 
     if (!res.ok) {
@@ -31,7 +33,7 @@ export async function checkQwenHealth(serverUrl: string = 'http://localhost:7861
     const res = await fetch(`${serverUrl}/health`, { signal: AbortSignal.timeout(3000) });
     if (!res.ok) return false;
     const data = await res.json();
-    return data.status === 'ok';
+    return data.status === 'healthy';
   } catch {
     return false;
   }
