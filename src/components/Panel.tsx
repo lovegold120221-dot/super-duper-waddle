@@ -8,7 +8,7 @@ import { generateVibeVoiceTTS, checkVibeVoiceHealth, VIBEVOICE_VOICES } from '..
 import { generateTadaTTS, checkTadaHealth, TADA_VOICES } from '../lib/tada-tts';
 import { CARTESIA_VOICES } from '../lib/cartesia-voices';
 import { MASTER_PANEL_PROMPT } from '../lib/prompts';
-import { saveConversation } from '../lib/supabase';
+import { saveConversation, ensureAuthenticated } from '../lib/supabase';
 import { saveUserSettings, getUserSettings, UserSettings, getDeviceId } from '../lib/user-settings';
 import { getAllDeviceSettings } from '../lib/user-settings';
 import AgentAvatars from './AgentAvatars';
@@ -356,7 +356,7 @@ const defaultAgents = [
   { id: 0, name: "Nexus", role: "Manager & Orchestrator", prompt: NEXUS_SYSTEM_PROMPT, hex: "#3b82f6", rgba: "59, 130, 246", img: <AgentAvatars.Nexus hex="#3b82f6" />, score: 100, voice: AGENT_DEFAULT_QWEN_VOICES['Nexus'], ttsProvider: "qwen", kbUrl: "", provider: "local", modelName: "llama3" },
   { id: 1, name: "Atlas", role: "Product Strategist", prompt: AGENT_SYSTEM_PROMPTS['Atlas'], hex: "#f97316", rgba: "249, 115, 22", img: <AgentAvatars.Atlas hex="#f97316" />, score: 100, voice: AGENT_DEFAULT_QWEN_VOICES['Atlas'], ttsProvider: "qwen", kbUrl: "", provider: "local", modelName: "llama3" },
   { id: 2, name: "Echo", role: "Execution Engineer", prompt: AGENT_SYSTEM_PROMPTS['Echo'], hex: "#a855f7", rgba: "168, 85, 247", img: <AgentAvatars.Echo hex="#a855f7" />, score: 100, voice: AGENT_DEFAULT_QWEN_VOICES['Echo'], ttsProvider: "qwen", kbUrl: "", provider: "local", modelName: "llama3" },
-  { id: 3, name: "Veda", role: "System Architect", prompt: AGENT_SYSTEM_PROMPTS['Veda'], hex: "#10b981", rgba: "16, 185, 129", img: <AgentAvatars.Veda hex="#10b981" />, score: 100, voice: AGENT_DEFAULT_QWEN_VOICES['Veda'], ttsProvider: "qwen", kbUrl: "", provider: "local", modelName: "qwen3.5" },
+  { id: 3, name: "Veda", role: "System Architect", prompt: AGENT_SYSTEM_PROMPTS['Veda'], hex: "#10b981", rgba: "16, 185, 129", img: <AgentAvatars.Veda hex="#10b981" />, score: 100, voice: AGENT_DEFAULT_QWEN_VOICES['Veda'], ttsProvider: "qwen", kbUrl: "", provider: "local", modelName: "llama3" },
   { id: 4, name: "Nova", role: "UX Specialist", prompt: AGENT_SYSTEM_PROMPTS['Nova'], hex: "#eab308", rgba: "234, 179, 8", img: <AgentAvatars.Nova hex="#eab308" />, score: 100, voice: AGENT_DEFAULT_QWEN_VOICES['Nova'], ttsProvider: "qwen", kbUrl: "", provider: "local", modelName: "llama3" },
   { id: 5, name: "Cipher", role: "Reality Checker", prompt: AGENT_SYSTEM_PROMPTS['Cipher'], hex: "#06b6d4", rgba: "6, 182, 212", img: <AgentAvatars.Cipher hex="#06b6d4" />, score: 100, voice: AGENT_DEFAULT_QWEN_VOICES['Cipher'], ttsProvider: "qwen", kbUrl: "", provider: "local", modelName: "llama3" }
 ];
@@ -520,10 +520,14 @@ export default function Panel() {
     setOllamaStatus(models.length > 0 ? 'connected' : 'disconnected');
   };
 
-  // Load user settings on component mount
+  // ─── Supabase Authentication & Initialization ──────────────────────────────
   useEffect(() => {
-    loadUserSettings();
-    loadSavedDiscussions();
+    const initialize = async () => {
+      await ensureAuthenticated();
+      await loadUserSettings();
+      await loadSavedDiscussions();
+    };
+    initialize();
   }, []);
 
   const loadSavedDiscussions = async () => {
@@ -1240,8 +1244,9 @@ export default function Panel() {
       prompt: "Standard directive.",
       hex: col.hex,
       rgba: col.rgba,
-      img: <div className="agent-avatar-bubble" style={{ background: col.hex }}>
+      img: <div className={`agent-avatar-bubble agent-color-init-${agents.length}`}>
         {agents.length + 1}
+        <style>{`.agent-color-init-${agents.length} { --agent-bg: ${col.hex}; }`}</style>
       </div>,
       score: 100,
       voice: AGENT_DEFAULT_CARTESIA_VOICES[`Node-${agents.length + 1}`] || '1ec736fa-db96-4eea-9299-235ce2cb7a0e',
@@ -1313,6 +1318,14 @@ export default function Panel() {
       </header>
 
       <main id="main-layout">
+        {/* Top Actions Bar (below header) */}
+        <div id="top-actions-bar">
+          <button className="new-session-label-btn" onClick={createNewDiscussion} title="New Conversation">
+            <Plus size={16} />
+            <span>Create New Session</span>
+          </button>
+        </div>
+
         {/* Conversation History Panel */}
         {showHistory && (
           <div id="history-panel">
@@ -1406,9 +1419,10 @@ export default function Panel() {
             {messages.map((msg) => (
               <div key={msg.id} className={msg.type === 'system-msg' ? 'system-msg' : `message ${msg.type}`}>
                 {msg.type === 'agent-message' && (
-                  <div className="agent-msg-name" style={{ color: msg.colorHex }}>
+                  <div className={`agent-msg-name agent-color-${msg.sender.replace(/\s+/g, '-')}`}>
                     <div className="flex items-center gap-2">
                       <Cpu size={14} /> {msg.sender}
+                      <style>{`.agent-color-${msg.sender.replace(/\s+/g, '-')} { --agent-color: ${msg.colorHex}; }`}</style>
                       {loadingStates[msg.sender] && (
                         <div className="loading-indicator">
                           <div className="loading-dot"></div>
@@ -1473,32 +1487,32 @@ export default function Panel() {
 
           <div id="controls-wrapper">
             <div className="controls-top">
-              <button
-                className={`mic-btn ${isRecording ? 'recording' : ''}`}
-                onClick={toggleMic}
-                title={isRecording ? 'Stop Recording' : 'Voice to Text'}
-              >
-                {isRecording ? (
-                  <canvas
-                    ref={micCanvasRef}
-                    className="mic-canvas"
-                    width={28}
-                    height={28}
-                  />
-                ) : (
-                  <Mic size={20} />
-                )}
-              </button>
-              <button className="new-conversation-btn" onClick={createNewDiscussion} title="New Conversation">
-                <Plus size={16} />
-              </button>
-              <button className="send-btn" onClick={() => handleSend()} title="Send Prompt" disabled={isProcessing || !input.trim()}>
-                <Send size={20} />
-              </button>
               <button className={`interrupt-btn ${isProcessing ? 'enabled' : ''}`} onClick={handleInterrupt} title="Interrupt Agents" disabled={!isProcessing}>
                 <AudioLines size={18} />
                 <span>HALT</span>
               </button>
+              
+              <div className="flex items-center gap-2 ml-auto">
+                <button
+                  className={`mic-btn ${isRecording ? 'recording' : ''}`}
+                  onClick={toggleMic}
+                  title={isRecording ? 'Stop Recording' : 'Voice to Text'}
+                >
+                  {isRecording ? (
+                    <canvas
+                      ref={micCanvasRef}
+                      className="mic-canvas"
+                      width={28}
+                      height={28}
+                    />
+                  ) : (
+                    <Mic size={20} />
+                  )}
+                </button>
+                <button className="send-btn" onClick={() => handleSend()} title="Send Prompt" disabled={isProcessing || !input.trim()}>
+                  <Send size={20} />
+                </button>
+              </div>
             </div>
             <div className="input-group-full">
               <input
@@ -1522,7 +1536,8 @@ export default function Panel() {
             const isActive = activeAgentName === a.name;
             const isSpeaking = speakingAgentName === a.name;
             return (
-              <div key={a.id} className={`agent-card ${isActive || isSpeaking ? 'active' : ''} ${isSpeaking ? 'speaking' : ''}`} style={{ '--agent-color-rgb': a.rgba } as any}>
+              <div key={a.id} className={`agent-card agent-dynamic-${a.id} ${isActive || isSpeaking ? 'active' : ''} ${isSpeaking ? 'speaking' : ''}`}>
+                <style>{`.agent-dynamic-${a.id} { --agent-color-rgb: ${a.rgba}; --agent-hex: ${a.hex}; --agent-bg: ${a.hex}; }`}</style>
                 <button className="star-btn" onClick={() => rewardAgent(i)} title="Reward Idea">
                   <Star size={16} fill="currentColor" />
                 </button>
@@ -1591,13 +1606,13 @@ export default function Panel() {
                   System Prompt
                 </div>
                 <div className={`agent-tab agent-tab-server ${activeEditIndex === -2 ? 'active' : ''}`} onClick={() => setActiveEditIndex(-2)}>
-                  <Server size={14} className="input-flex" style={{ flexShrink: 0 }} />
+                  <Server size={14} className="input-flex" />
                   Server Config
                 </div>
                 <div className="settings-sidebar-header sidebar-section-header">Neural Nodes</div>
                 {agents.map((a, i) => (
-                  <div key={a.id} className={`agent-tab ${i === activeEditIndex ? 'active' : ''}`} onClick={() => setActiveEditIndex(i)} style={{ '--agent-color-rgb': a.rgba } as any}>
-                    <div className="tab-color-dot" style={{ color: a.hex, background: a.hex }}></div>
+                  <div key={a.id} className={`agent-tab agent-dynamic-${a.id} ${i === activeEditIndex ? 'active' : ''}`} onClick={() => setActiveEditIndex(i)}>
+                    <div className="tab-color-dot"></div>
                     {a.name}
                   </div>
                 ))}
@@ -1630,89 +1645,85 @@ export default function Panel() {
               </div>
 
               {activeEditIndex === -2 ? (
-                <div className="form-grid">
-                  <div className="form-group full">
-                    <label>Ollama Server URL</label>
-                    <div className="row-flex">
-                      <input type="text" className="custom-input input-flex" value={ollamaUrl} onChange={(e) => setOllamaUrl(e.target.value)} placeholder="http://localhost:11434" />
-                      <button
-                        className="custom-input btn-action"
-                        onClick={() => refreshOllamaModels(ollamaUrl)}
-                      >
-                        Test &amp; Refresh
-                      </button>
+                <>
+                  <div className="form-grid">
+                    <div className="form-group full">
+                      <label>Ollama Server URL</label>
+                      <div className="row-flex">
+                        <input type="text" className="custom-input input-flex" value={ollamaUrl} onChange={(e) => setOllamaUrl(e.target.value)} placeholder="http://localhost:11434" />
+                        <button
+                          className="custom-input btn-action"
+                          onClick={() => refreshOllamaModels(ollamaUrl)}
+                        >
+                          Test &amp; Refresh
+                        </button>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="form-group full">
-                    <label>Connection Status</label>
-                    <div className="row-flex-center">
-                      <div className={`status-dot ${ollamaStatus}`}></div>
-                      <span className="status-text">
-                        {ollamaStatus === 'connected' ? `Connected — ${ollamaModels.length} model${ollamaModels.length !== 1 ? 's' : ''} available` : ollamaStatus === 'checking' ? 'Checking...' : 'Not connected'}
-                      </span>
+                    <div className="form-group full">
+                      <label>Connection Status</label>
+                      <div className="row-flex-center">
+                        <div className={`status-dot ${ollamaStatus}`}></div>
+                        <span className="status-text">
+                          {ollamaStatus === 'connected' ? `Connected — ${ollamaModels.length} model${ollamaModels.length !== 1 ? 's' : ''} available` : ollamaStatus === 'checking' ? 'Checking...' : 'Not connected'}
+                        </span>
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="form-group full">
-                    <label>Default Ollama Model</label>
-                    <select className="custom-input" title="Default Ollama Model" aria-label="Default Ollama Model" value={ollamaDefaultModel} onChange={(e) => setOllamaDefaultModel(e.target.value)}>
-                      {ollamaModels.length > 0 ? ollamaModels.map(m => (
-                        <option key={m} value={m}>{m}</option>
-                      )) : (
-                        <option value={ollamaDefaultModel}>{ollamaDefaultModel}</option>
-                      )}
-                    </select>
-                  </div>
-
-                  <div className="form-group full">
-                    <label>Available Models</label>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                      {ollamaModels.length > 0 ? ollamaModels.map(m => (
-                        <span key={m} style={{ padding: '6px 12px', background: 'var(--bg-input)', border: '1px solid var(--border-color)', borderRadius: '8px', fontSize: '0.85rem' }}>{m}</span>
-                      )) : (
-                        <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Click "Test & Refresh" to load models from Ollama</span>
-                      )}
+                    <div className="form-group full">
+                      <label>Default Ollama Model</label>
+                      <select className="custom-input" title="Default Ollama Model" aria-label="Default Ollama Model" value={ollamaDefaultModel} onChange={(e) => setOllamaDefaultModel(e.target.value)}>
+                        {ollamaModels.length > 0 ? ollamaModels.map(m => (
+                          <option key={m} value={m}>{m}</option>
+                        )) : (
+                          <option value={ollamaDefaultModel}>{ollamaDefaultModel}</option>
+                        )}
+                      </select>
                     </div>
-                  </div>
 
-                  <div className="form-group full info-box">
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6, margin: 0 }}>
-                      <strong>Note:</strong> The Manager agent's Model Provider setting determines the engine for the entire panel discussion. If you encounter CORS errors, restart Ollama with:<br />
-                      <code style={{ display: 'inline-block', marginTop: '6px', background: 'rgba(0,0,0,0.3)', padding: '4px 8px', borderRadius: '4px' }}>OLLAMA_ORIGINS=* ollama serve</code>
-                    </p>
-                  </div>
-
-                  <div className="form-group full info-box">
-                    <label>Device ID (Anonymous User)</label>
-                    <div className="row-flex-center">
-                      <input
-                        type="text"
-                        className="custom-input input-mono"
-                        value={getDeviceId()}
-                        readOnly
-                        title="Your unique device identifier for saving settings"
-                      />
-                      <button
-                        className="custom-input btn-action"
-                        onClick={() => {
-                          navigator.clipboard.writeText(getDeviceId());
-                          alert('Device ID copied to clipboard!');
-                        }}
-                        title="Copy device ID to clipboard"
-                      >
-                        📋 Copy
-                      </button>
+                    <div className="form-group full">
+                      <label>Available Models</label>
+                      <div className="row-flex-wrap">
+                        {ollamaModels.length > 0 ? ollamaModels.map(m => (
+                          <span key={m} className="badge-pill">{m}</span>
+                        )) : (
+                          <span className="badge-muted">Click "Test &amp; Refresh" to load models from Ollama</span>
+                        )}
+                      </div>
                     </div>
-                    <div className="info-box-sm"><p>Your settings are saved anonymously using this device identifier. Each device has its own unique settings.</p></div>
-                  </div>
-                  </div>
 
-                  <div className="form-group full info-box">
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6, margin: 0 }}>
-                      <strong>Note:</strong> The Manager agent's Model Provider setting determines the engine for the entire panel discussion. If you encounter CORS errors, restart Ollama with:<br />
-                      <code style={{ display: 'inline-block', marginTop: '6px', background: 'rgba(0,0,0,0.3)', padding: '4px 8px', borderRadius: '4px' }}>OLLAMA_ORIGINS=* ollama serve</code>
-                    </p>
+                    <div className="info-box-content">
+                      <p className="info-box-p">
+                        <strong>Note:</strong> The Manager agent's Model Provider setting determines the engine for the entire panel discussion. If you encounter CORS errors, restart Ollama with:<br />
+                        <code className="code-pill">OLLAMA_ORIGINS=* ollama serve</code>
+                      </p>
+                    </div>
+
+                    <div className="form-group full info-box">
+                      <label>Device ID (Anonymous User)</label>
+                      <div className="row-flex-center">
+                        <input
+                          type="text"
+                          className="custom-input input-mono"
+                          value={getDeviceId()}
+                          readOnly
+                          title="Your unique device identifier for saving settings"
+                        />
+                        <button
+                          className="custom-input btn-action"
+                          onClick={() => {
+                            navigator.clipboard.writeText(getDeviceId());
+                            alert('Device ID copied to clipboard!');
+                          }}
+                          title="Copy device ID to clipboard"
+                        >
+                          📋 Copy
+                        </button>
+                      </div>
+                      <div className="info-box-sm">
+                        <p>Your settings are saved anonymously using this device identifier. Each device has its own unique settings.</p>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="section-divider">
@@ -1761,12 +1772,13 @@ export default function Panel() {
                   </div>
 
                   <div className="form-group full info-box">
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6, margin: 0 }}>
-                      <strong>Default:</strong> All agents use Qwen3 TTS by default for local voice synthesis. You can change to Cartesia or Gemini voices in any agent's Voice Profile dropdown. The TTS provider is auto-detected from the voice selection.
-                    </p>
+                    <div className="info-box-content">
+                      <p className="info-box-p">
+                        <strong>Default:</strong> All agents use Qwen3 TTS by default for local voice synthesis. You can change to Cartesia or Gemini voices in any agent's Voice Profile dropdown. The TTS provider is auto-detected from the voice selection.
+                      </p>
+                    </div>
                   </div>
 
-                  {/* ─── Cartesia AI ─── */}
                   <div className="section-divider">
                     <h3 className="section-heading">🎙️ Cartesia AI (Cloud Voice)</h3>
                   </div>
@@ -1809,12 +1821,13 @@ export default function Panel() {
                   </div>
 
                   <div className="form-group full info-box">
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6, margin: 0 }}>
-                      <strong>100 voices available.</strong> Select any Cartesia voice in an agent's Voice Profile dropdown. Voices are grouped by language and gender. Default agents use pre-assigned unique Cartesia voices.
-                    </p>
+                    <div className="info-box-content">
+                      <p className="info-box-p">
+                        <strong>100 voices available.</strong> Select any Cartesia voice in an agent's Voice Profile dropdown. Voices are grouped by language and gender. Default agents use pre-assigned unique Cartesia voices.
+                      </p>
+                    </div>
                   </div>
 
-                  {/* ─── Gemini TTS ─── */}
                   <div className="section-divider">
                     <h3 className="section-heading">☁️ Gemini TTS (Google Cloud)</h3>
                   </div>
@@ -1849,12 +1862,13 @@ export default function Panel() {
                   </div>
 
                   <div className="form-group full info-box">
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6, margin: 0 }}>
-                      <strong>7 voices available.</strong> Google Gemini TTS with high-quality voice synthesis. Uses your Gemini API key for cloud-based text-to-speech.
-                    </p>
+                    <div className="info-box-content">
+                      <p className="info-box-p">
+                        <strong>7 voices available.</strong> Google Gemini TTS with high-quality voice synthesis. Uses your Gemini API key for cloud-based text-to-speech.
+                      </p>
+                    </div>
                   </div>
 
-                  {/* ─── TADA TTS ─── */}
                   <div className="section-divider">
                     <h3 className="section-heading">🎤 TADA TTS (Local — Hume AI)</h3>
                   </div>
@@ -1904,11 +1918,13 @@ export default function Panel() {
                   </div>
 
                   <div className="form-group full info-box">
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6, margin: 0 }}>
-                      <strong>Hume AI TADA-1B</strong> — Local zero-shot voice cloning using Meta Llama 3.2. Each voice uses a reference WAV file in <code>tada_voices/</code>. Requires GPU for best performance. Start with: <code>python tada_server.py</code>
-                    </p>
+                    <div className="info-box-content">
+                      <p className="info-box-p">
+                        <strong>Hume AI TADA-1B</strong> — Local zero-shot voice cloning using Meta Llama 3.2. Each voice uses a reference WAV file in <code>tada_voices/</code>. Requires GPU for best performance. Start with: <code>python tada_server.py</code>
+                      </p>
+                    </div>
                   </div>
-                </div>
+                </>
               ) : agents.length === 0 ? (
                 <div className="no-agents-state">
                   <UserX size={48} className="memory-empty-icon" />
@@ -2058,14 +2074,14 @@ export default function Panel() {
                     <div className="form-group">
                       <label>Agent Avatar</label>
                       <div className="file-upload-zone" onClick={() => document.getElementById('avatar-upload')?.click()}>
-                        <ImageIcon size={24} style={{ margin: '0 auto 10px auto', color: 'var(--text-muted)' }} />
-                        <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Click to upload image</p>
+                        <ImageIcon size={24} className="upload-icon" />
+                        <p className="upload-hint">Click to upload image</p>
                         <input
                           type="file"
                           id="avatar-upload"
                           title="Upload Agent Avatar"
                           aria-label="Upload Agent Avatar"
-                          style={{ display: 'none' }}
+                          className="input-hidden"
                           accept="image/*"
                           onChange={(e) => {
                             const file = e.target.files?.[0];

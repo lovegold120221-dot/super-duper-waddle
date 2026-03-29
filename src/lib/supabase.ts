@@ -5,6 +5,40 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
+/**
+ * Ensures that the user is authenticated anonymously with Supabase.
+ * This is required if RLS policies are active and permit only authenticated users.
+ */
+export async function ensureAuthenticated() {
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    
+    if (session) {
+      return session.user
+    }
+    
+    const { data, error } = await supabase.auth.signInAnonymously()
+    
+    if (error) {
+      console.error('Error signing in anonymously:', error)
+      return null
+    }
+    
+    return data.user
+  } catch (error) {
+    console.error('Supabase authentication failed:', error)
+    return null
+  }
+}
+
+/**
+ * Helper to get the current session.
+ */
+export async function getCurrentSession() {
+  const { data: { session } } = await supabase.auth.getSession()
+  return session
+}
+
 export interface Conversation {
   id?: string
   topic: string

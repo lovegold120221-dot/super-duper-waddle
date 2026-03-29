@@ -107,6 +107,38 @@ header {
     pointer-events: none;
 }
 
+#main-layout {
+    flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative;
+}
+
+/* Top Actions Bar (below header) */
+#top-actions-bar {
+    padding: 10px 30px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: flex-start;
+}
+.new-session-label-btn {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-main);
+    padding: 8px 16px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.new-session-label-btn:hover {
+    background: var(--bg-input);
+    border-color: var(--accent-blue);
+    color: var(--accent-blue);
+}
+
 #chat-window {
     flex: 1; padding: 30px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px;
     scroll-behavior: smooth;
@@ -134,7 +166,10 @@ header {
 }
 
 .controls-top {
-    display: flex; gap: 12px; align-items: center;
+    display: flex; 
+    align-items: center; 
+    justify-content: space-between; 
+    margin-bottom: 12px;
 }
 
 .input-group-full {
@@ -325,7 +360,7 @@ input::placeholder { color: var(--text-muted); }
 
 /* Controls row + full-width input below */
 #controls-wrapper { padding: 12px 25px 16px; border-top: 1px solid var(--border-color); background: var(--bg-panel); display: flex; flex-direction: column; gap: 10px; }
-.controls-top { display: flex; gap: 10px; align-items: center; }
+/* .controls-top consolidated with header/wrapper styles */
 .input-group-full { background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 30px; padding: 5px 15px; display: flex; align-items: center; transition: 0.2s; }
 .input-group-full:focus-within { border-color: var(--accent-blue); box-shadow: 0 0 0 2px rgba(59,130,246,0.2); }
 .input-group-full input { width: 100%; background: transparent; border: none; outline: none; color: var(--text-main); padding: 10px 5px; font-size: 0.9rem; }
@@ -449,7 +484,8 @@ input::placeholder { color: var(--text-muted); }
 .agent-tab { padding: 12px 15px; margin-bottom: 5px; border-radius: 10px; cursor: pointer; display: flex; align-items: center; gap: 12px; color: var(--text-muted); transition: 0.2s; font-weight: 500;}
 .agent-tab:hover { background: var(--bg-input); color: var(--text-main); }
 .agent-tab.active { background: var(--bg-input); color: var(--text-main); border-left: 3px solid rgba(var(--agent-color-rgb), 1); }
-.tab-color-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; background: currentColor; }
+.tab-color-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; background: var(--agent-hex, currentColor); }
+.tab-color-dot-system { background: var(--text-main); }
 
 .add-agent-btn { margin: 15px; padding: 12px; background: transparent; border: 1px dashed var(--border-color); color: var(--text-main); border-radius: 10px; text-align: center; cursor: pointer; font-weight: 500; display: flex; justify-content: center; align-items: center; gap: 8px; transition: 0.2s;}
 .add-agent-btn:hover { border-color: var(--accent-blue); color: var(--accent-blue); background: rgba(59, 130, 246, 0.05); }
@@ -496,6 +532,13 @@ textarea.custom-input { resize: vertical; min-height: 80px; }
 
 /* Sidebar tab for server config (accent blue) */
 .agent-tab-server { --agent-color-rgb: 59, 130, 246; }
+
+/* Settings panel typography */
+.info-box-p { font-size: 0.85rem; color: var(--text-muted); line-height: 1.6; margin: 0; }
+.code-pill { display: inline-block; margin-top: 6px; background: rgba(0,0,0,0.3); padding: 4px 8px; border-radius: 4px; font-family: monospace; }
+.info-box-content { margin-top: 10px; }
+.info-box-sm p { font-size: 0.75rem; color: var(--text-muted); margin: 8px 0 0 0; line-height: 1.4; }
+.input-mono { font-family: monospace; font-size: 0.85rem; flex: 1; }
 
 /* Sidebar section spacing */
 .sidebar-section-header { margin-top: 20px; }
@@ -544,7 +587,7 @@ textarea.custom-input { resize: vertical; min-height: 80px; }
 .agent-model-label { font-size: 0.62rem; color: var(--text-muted); opacity: 0.6; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Agent avatar bubble (new agent default) */
-.agent-avatar-bubble { width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; }
+.agent-avatar-bubble { width: 120px; height: 120px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 2rem; }
 
 /* No-agents state in settings */
 .no-agents-state { display: flex; flex: 1; justify-content: center; align-items: center; flex-direction: column; color: var(--text-muted); margin-top: 60px; }
@@ -559,14 +602,22 @@ textarea.custom-input { resize: vertical; min-height: 80px; }
 .input-hidden { display: none; }
 
 /* Uploaded avatar image */
-.avatar-img { width: 60px; height: 60px; border-radius: 50%; }
+.avatar-img { width: 120px; height: 120px; border-radius: 50%; transition: transform 0.3s ease; }
+.avatar-img:hover { transform: scale(1.05); }
 
 /* ImageIcon inside upload zone */
 .upload-icon { margin: 0 auto 10px auto; color: var(--text-muted); display: block; }
 .upload-hint { font-size: 0.9rem; color: var(--text-muted); }
 
+
 /* Agent message name - user variant */
 .agent-msg-name-user { color: rgba(255,255,255,0.8); }
+
+/* Settings panel typography */
+.info-box-p { font-size: 0.85rem; color: var(--text-muted); line-height: 1.6; margin: 0; }
+.code-pill { display: inline-block; margin-top: 6px; background: rgba(0,0,0,0.3); padding: 4px 8px; border-radius: 4px; font-family: monospace; }
+.info-box-content { margin-top: 0; }
+.info-box-sm p { font-size: 0.75rem; color: var(--text-muted); margin: 8px 0 0 0; line-height: 1.4; }
 
 
 /* =========================================
@@ -593,10 +644,16 @@ textarea.custom-input { resize: vertical; min-height: 80px; }
         scroll-snap-type: x mandatory;
         border-bottom: 1px solid var(--border-color);
         background: var(--bg-panel);
-        scrollbar-width: none; /* Firefox */
-        transition: flex 0.3s ease;
     }
-    #agent-grid::-webkit-scrollbar { display: none; /* Chrome/Safari - hide to look like native app */ }
+    @supports (scrollbar-width: none) {
+        #agent-grid { scrollbar-width: none; }
+    }
+    #agent-grid::-webkit-scrollbar { display: none; }
+    
+    #agent-grid::-webkit-scrollbar {
+        width: 0;
+        height: 0;
+    }
 
     /* Compact Agent Cards for mobile swiping */
     .agent-card { 
