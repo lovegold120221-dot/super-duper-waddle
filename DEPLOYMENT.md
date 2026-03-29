@@ -5,11 +5,13 @@ Complete deployment guide for Strategy Nexus with Ollama, TTS providers, and Ver
 ## 📋 Table of Contents
 
 - [Ollama Deployment](#ollama-deployment)
-- [TTS Providers](#tts-providers)
-- [Vercel Deployment](#vercel-deployment)
-- [Docker Deployment](#docker-deployment)
-- [Security & Monitoring](#security--monitoring)
+- [TTS Providers Deployment](#tts-providers-deployment)
+- [Docker Deployment Considerations](#docker-deployment-considerations)
+- [Security Considerations](#security-considerations)
+- [Monitoring & Logging](#monitoring--logging)
+- [Performance Optimization](#performance-optimization)
 - [Troubleshooting](#troubleshooting)
+- [Cost Optimization](#cost-optimization)
 
 ---
 
@@ -173,7 +175,7 @@ docker run -d -p 7861:7861 --gpus all qwen-tts
 
 ### **Tada TTS (Hume AI)**
 
-#### Docker Deployment
+#### Tada Docker Deployment
 ```dockerfile
 FROM python:3.9-slim
 
@@ -217,9 +219,9 @@ GEMINI_API_KEY=xxxxxxxx
 
 ---
 
-## Docker Deployment Considerations**
+## Docker Deployment Considerations
 
-#### **1. API Key Protection**
+#### **1. Config Protection**
 ```bash
 # Use Vercel environment variables
 OLLAMA_API_KEY=sk-xxxxx
@@ -236,7 +238,7 @@ OLLAMA_API_KEY=sk-xxxxx
 ollama serve --host 0.0.0.0 --port 11434 --api-key your-key
 ```
 
-#### **2. Rate Limiting**
+#### **2. API Rate Limiting**
 ```typescript
 // In api/ollama-proxy.ts
 const rateLimit = new Map<string, number>();
@@ -294,7 +296,7 @@ export default function handler(req, res) {
 
 ### **Performance Optimization**
 
-#### **1. Caching**
+#### **1. Request Caching**
 ```typescript
 // Add caching for model lists
 const cache = new Map<string, any>();
@@ -330,7 +332,7 @@ res.setHeader('Connection', 'keep-alive');
 3. **Connection refused** - Verify Ollama server is running
 4. **Model not found** - Ensure models are installed on server
 
-#### **Debug Commands:**
+#### **Common Debug Commands:**
 ```bash
 # Test Ollama server
 curl http://your-server:11434/api/tags
@@ -349,7 +351,7 @@ vercel logs
 - Implement rate limiting
 - Use streaming for large responses
 
-#### **2. Choose Right Hosting**
+#### **2. Choose Right Hosting Options**
 - **Railway**: $5-20/month
 - **Render**: Free tier available
 - **DigitalOcean**: $5/month

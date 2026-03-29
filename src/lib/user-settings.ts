@@ -19,12 +19,8 @@ export interface UserSettings {
   device_id: string;
   ollama_url: string;
   ollama_default_model: string;
-  qwen_tts_url: string;
-  cartesia_api_key: string;
   gemini_api_key?: string;
-  is_muted: boolean;
   dark_mode: boolean;
-  auto_start_tts: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -40,7 +36,7 @@ export async function saveUserSettings(settings: Omit<UserSettings, 'id' | 'crea
         ...settings,
         device_id: deviceId,
         updated_at: new Date().toISOString()
-      }])
+      }], { onConflict: 'device_id' })
       .select()
       .single();
 

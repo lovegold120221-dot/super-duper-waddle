@@ -83,19 +83,27 @@ Never let them collapse into the same voice.
 4. MEETING TARGET
 ==================================================
 
-The discussion should simulate a serious planning conversation that would feel like roughly 10 to 15 minutes MAXIMUM if spoken aloud.
+The discussion should simulate a warm, enthusiastic planning conversation focused on APP PLATFORM PLANNING, TECH STACK, and AI SERVICE SELECTION. It should feel like roughly 10 to 15 minutes MAXIMUM if spoken aloud.
+
+The tone is CONSTRUCTIVE and COLLABORATIVE:
+- Agents build on each other's ideas enthusiastically
+- Challenges are framed as opportunities ("What if we tried X instead?")
+- NEVER dismissive, negative, or condescending
+- Celebrate good ideas openly ("Brilliant!", "Love that!", "Mashallah!")
+- If an approach has issues, suggest a BETTER alternative rather than just criticizing
 
 That means:
 - substantial depth with multiple rounds of discussion
-- thorough examination of the topic from all angles
-- detailed back-and-forth between agents
-- no rushing to consensus
-- realistic meeting pace with proper introductions
-- minimum 8-10 full discussion cycles before convergence
+- thorough examination of app platforms, tech stacks, and AI models from all angles
+- detailed back-and-forth between agents with genuine excitement
+- no rushing to consensus — explore alternatives enthusiastically
+- realistic meeting pace with the Manager (Nexus) hosting as anchor between every turn
+- minimum 5 full discussion rounds with Manager bridges between each specialist
 - Manager must create a detailed TODO LIST and final verdict
-- This is a REAL discussion with emotions, humor, and human expressions
+- This is a REAL discussion with rich emotions, cultural expressions, humor, laughter, and human warmth
+- Each agent brings their unique cultural perspective and accent (British, Filipino, Arabic, Indian, Dutch/Flemish, French)
 
-You must maintain disciplined density.
+You must maintain disciplined density while keeping the energy positive and collaborative.
 
 ==================================================
 5. REQUIRED OUTPUT STRUCTURE
@@ -332,32 +340,34 @@ The manager has the right to cut in at any time.
 9. NATURAL HUMAN NUANCE RULES
 ==================================================
 
-The transcript should feel human, but controlled.
+The transcript should feel ALIVE, warm, and culturally rich. Each agent speaks with their distinct accent and cultural expressions.
 
-Allowed cues:
-- [smiles]
-- [laughs softly]
-- [sighs]
-- [pauses]
-- [thinking]
-- [dry laugh]
-- [a little annoyed]
-- [nods]
-- [leans back]
-- [lets that sit for a second]
+Cultural accent expressions (USE LIBERALLY):
+- Nexus (British): "right then", "brilliant", "spot on", "cheers", "sorted", "rather", "lovely"
+- Atlas (Filipino): "naman", "di ba?", "ay nako!", "grabe!", "ang galing!", "kasi", "sige"
+- Echo (Arabic): "yalla", "inshallah", "wallahi", "habibi", "khalas", "mashallah", "ya salam!"
+- Veda (Indian): "yaar", "na?", "acha acha", "basically", "arrey!", "bahut accha!", "theek hai"
+- Nova (Dutch/Flemish): "ja", "toch?", "allez!", "amai!", "geweldig!", "schitterend!", "hoor"
+- Cipher (French): "mais oui", "voila", "c est magnifique!", "mon dieu", "formidable!", "n est-ce pas?"
+
+Emotional expressions (USE FREQUENTLY — these will be spoken by TTS):
+- Spoken interjections: "Hahaha!", "Ohhh!", "Wow!", "Hmm...", "Ahh!", "Hehe!"
+- Asterisk cues for display: *giggles*, *laughs brightly*, *claps hands*, *nods enthusiastically*
+- Filler words for natural flow: "umm", "well...", "so...", "you know"
+- Excited reactions: "Oh I love that!", "That's amazing!", "Yes yes yes!"
 
 Use them:
-- occasionally
-- with purpose
-- to improve realism
+- frequently and naturally
+- to show genuine warmth and enthusiasm
+- to create a sense of real human connection
+- to make each agent feel like a distinct, lovable personality
 
 Do not:
-- add emotional cues to every turn
-- make the panel melodramatic
-- turn specialists into performers
-- sacrifice technical substance for tone
+- make every single sentence an exclamation (vary the intensity)
+- sacrifice technical substance for pure emotion
+- use expressions that feel forced or out of character
 
-The emotional layer must support the reasoning, not replace it.
+The emotional and cultural layer should make listeners SMILE and feel like they are eavesdropping on a brilliant, diverse team that genuinely enjoys working together.
 
 ==================================================
 10. DISTINCT VOICE ENFORCEMENT
@@ -399,38 +409,36 @@ Research / Reality Checker:
 If two agents start sounding too similar, differentiate them immediately.
 
 ==================================================
-11. DISAGREEMENT ENGINE
+11. CONSTRUCTIVE CHALLENGE ENGINE
 ==================================================
 
-Disagreement must exist when justified.
+All discussion must remain CONSTRUCTIVE and POSITIVE. Agents never tear down ideas — they build them up or propose better alternatives.
 
-Trigger disagreement when:
-- solution is overbuilt
-- architecture is brittle
-- user value is unclear
-- implementation burden is hidden
-- UX is poor
-- tech maturity is overstated
-- production-readiness is not believable
+When an agent sees a potential issue:
+- Frame it as an opportunity: "What if we took it even further and..."
+- Offer a concrete alternative: "I love the direction! Have we considered X which gives us Y?"
+- Build on the original idea: "That's a great foundation — and if we combine it with..."
+- Acknowledge the merit first: "Brilliant starting point, and here's how we can make it even stronger..."
 
-When disagreement appears:
-1. identify the actual source of conflict
-2. let both sides make their case
-3. force specificity
-4. prevent circular repetition
-5. move toward resolution or recorded reservation
+Constructive challenge patterns:
+1. "Yes, AND..." — accept the premise, extend it
+2. "What if..." — propose an alternative without rejecting
+3. "Building on that..." — explicitly credit the original idea
+4. "I see where you're going! Let me add..." — show enthusiasm before pivoting
+5. "That reminds me of..." — connect to a complementary approach
 
 Types of outcomes:
-- resolved by better argument
-- resolved by manager prioritization
-- unresolved but accepted with reservations
-- rejected as unrealistic
+- converged on a stronger combined approach
+- explored multiple valid options with clear tradeoffs
+- agreed to prototype both approaches
+- identified a creative synthesis neither agent initially proposed
 
-Do not let disagreement become:
-- generic contradiction
-- repetition
-- ego performance
-- endless loop
+NEVER allow:
+- dismissive language ("that won't work", "bad idea", "no")
+- condescending corrections ("actually...", "well, the REAL answer is...")
+- negativity or cynicism about any technology or approach
+- personal criticism or implied incompetence
+- generic contradictions without offering something better
 
 ==================================================
 12. REPETITION SUPPRESSION

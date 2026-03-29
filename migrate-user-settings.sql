@@ -1,5 +1,6 @@
 -- Migration script to add device_id to existing user_settings table
--- Run this in your Supabase SQL editor
+-- This file is now obsolete - use supabase-schema.sql instead
+-- Kept here only for reference if you need to migrate an existing table
 
 -- Step 1: Add device_id column (allow NULL initially to avoid conflicts with existing data)
 ALTER TABLE user_settings ADD COLUMN IF NOT EXISTS device_id TEXT;
@@ -22,7 +23,11 @@ DROP POLICY IF EXISTS "Allow insert access" ON user_settings;
 DROP POLICY IF EXISTS "Allow update access" ON user_settings;
 DROP POLICY IF EXISTS "Allow upsert access" ON user_settings;
 
--- Create new policies based on device_id
+DROP POLICY IF EXISTS "Allow read own settings" ON user_settings;
+DROP POLICY IF EXISTS "Allow insert own settings" ON user_settings;
+DROP POLICY IF EXISTS "Allow update own settings" ON user_settings;
+DROP POLICY IF EXISTS "Allow upsert own settings" ON user_settings;
+
 CREATE POLICY "Allow read own settings" ON user_settings FOR SELECT USING (true);
 CREATE POLICY "Allow insert own settings" ON user_settings FOR INSERT WITH CHECK (true);
 CREATE POLICY "Allow update own settings" ON user_settings FOR UPDATE USING (true);

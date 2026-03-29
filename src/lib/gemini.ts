@@ -1,4 +1,4 @@
-import { GoogleGenAI, ThinkingLevel, Modality } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { MASTER_PANEL_PROMPT } from "./prompts";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -8,22 +8,42 @@ export async function* streamAgentTurnGemini(
   agent: { name: string; role: string; prompt: string },
   topic: string,
   history: Array<{ speaker: string; role: string; text: string }>,
-  turnContext: { isFirst: boolean; isLast: boolean; round?: number },
+  turnContext: { isFirst: boolean; isLast: boolean; round?: number; nextSpeaker?: string; prevSpeaker?: string },
   signal?: AbortSignal
 ): AsyncGenerator<string> {
   const historyBlock = history.length > 0
     ? '\n\nDISCUSSION SO FAR:\n' + history.map(h => `[${h.speaker}]: ${h.text}`).join('\n\n')
     : '';
 
-  const prompt = `You are ${agent.name}, ${agent.role}.${agent.prompt ? ` Character: ${agent.prompt}` : ''}${historyBlock}
+  const isManagerBridge = !turnContext.isFirst && !turnContext.isLast && agent.name === 'Nexus';
+  const nextSpeaker = turnContext.nextSpeaker;
+  const prevSpeaker = turnContext.prevSpeaker;
 
-${turnContext.isFirst
-    ? `Topic for this session: "${topic}". You're leading this meeting. CRITICAL: Start with proper introductions. First introduce yourself as Nexus the Manager with some humor, then invite each specialist (Atlas, Veda, Echo, Nova, Cipher) to introduce themselves and their roles. After all introductions, frame the core challenge with energy and define what success looks like. This should be a substantial opening that establishes the professional meeting context. 4-6 sentences for the opening, then guide introductions. Keep it engaging but professional.`
-    : turnContext.isLast
-    ? `You've heard from the full team on "${topic}". Synthesize the strongest points, acknowledge the tension, and make a clear decisive recommendation as leader. Close with conviction. This should feel like a thorough manager summary after a 10-15 minute discussion. Now you can give a full detailed idea with your complete plan. 4-6 sentences.`
-    : `${history.length > 0 ? `${history[history.length - 1]?.speaker || 'the previous speaker'} just said: "${history[history.length - 1]?.text.substring(0, 250) || ''}"\n\n` : ''}React to that and add your expert take as ${agent.role} on "${topic}". This is round ${turnContext.round || 1} of the discussion, so build upon previous points and add new insights. Keep it to 1-2 sentences with your characteristic humor, emotions, and natural human expressions. Use reactions like "*sighs*", "*chuckles*", "*facepalm*", "*nods thoughtfully*" to make it feel real. Fast and lively responses! Save your full detailed ideas for the final convergence.`}
+  let turnInstruction: string;
+  if (turnContext.isFirst) {
+    turnInstruction = `Topic: "${topic}". You are the MEETING HOST. Introduce yourself casually, then go around the room and have each person introduce themselves. Ask "So, who wants to kick us off?" to start the discussion. 4-6 sentences. Be chill, natural, like a team standup.`;
+  } else if (turnContext.isLast) {
+    turnInstruction = `You have heard from the full team on "${topic}". Synthesize what you heard and make a clear decision. Close it out naturally. 2-3 sentences max. Be warm but decisive.`;
+  } else if (isManagerBridge) {
+    const prev = history.length > 0 ? history[history.length - 1] : null;
+    const reaction = prev ? `${prev.speaker} just made a good point about "${prev.text.substring(0, 80)}..."` : '';
+    turnInstruction = `${reaction ? reaction + '\n\n' : ''}You are the HOST. React briefly (like "Ooh interesting", "Good call", "Haha true"), then ask who wants to go next. Examples: "Who wants to jump in?", "Anyone else got thoughts?", "${nextSpeaker || 'You'} — what do you think?" Call on ${nextSpeaker || 'someone'} by name to speak. Keep it short — 1-2 sentences. Be natural, not formal.`;
+  } else {
+    const prev = history.length > 0 ? history[history.length - 1] : null;
+    const prevContext = prev ? `${prev.speaker} just said: "${prev.text.substring(0, 100)}..."` : '';
+    turnInstruction = `${prevContext ? prevContext + '\n\n' : ''}You are ${agent.name}. React to what was said — agree, build on it, or add a new angle. 1-2 sentences max. Be casual, not formal. Talk like you are in a meeting, not presenting. Use your cultural expressions naturally. Don't repeat what was already said — add something new.`;
+  }
 
-Speak naturally in 1-2 sentences with your characteristic humor, emotions, and natural human expressions. Use reactions like "*sighs*", "*chuckles*", "*facepalm*", "*nods thoughtfully*", "*raises eyebrow*" to make it feel real. Fast and lively responses! Human expert tone. No bullet points. No name introduction.`;
+  const prompt = `You are ${agent.name}, ${agent.role}.${agent.prompt ? ` ${agent.prompt}` : ''}${historyBlock}
+
+${turnInstruction}
+
+STYLE:
+- Casual, natural speaking — like a team meeting, not a presentation
+- Short sentences, get to the point
+- No bullet points, no headers, no markdown
+- React to specifics, not generic praise
+- Keep it SHORT: ${isManagerBridge ? '1 sentence' : turnContext.isFirst || turnContext.isLast ? '2-3 sentences' : '1-2 sentences max'}`;
 
   const stream = await ai.models.generateContentStream({
     model: 'gemini-2.5-flash',
@@ -96,33 +116,4 @@ Simulate a realistic 10-15 minutes internal panel meeting with proper introducti
   }
 }
 
-export async function generateTTS(text: string, voiceName: string = 'Kore') {
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text }] }],
-      config: {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: { voiceName },
-          },
-        },
-      },
-    });
 
-    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (base64Audio) {
-      const binary = atob(base64Audio);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) {
-        bytes[i] = binary.charCodeAt(i);
-      }
-      const blob = new Blob([bytes], { type: 'audio/wav' });
-      return URL.createObjectURL(blob);
-    }
-  } catch (error) {
-    console.error("TTS Error:", error);
-    return null;
-  }
-}
