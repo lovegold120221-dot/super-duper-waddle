@@ -1,27 +1,9 @@
--- Strategy Nexus - Supabase Schema
+-- Migration: Add RLS policies and trigger to existing tables
 -- Run this in your Supabase SQL editor
 
 -- ============================================
--- USER SETTINGS TABLE
+-- USER SETTINGS - RLS + TRIGGER
 -- ============================================
-
-CREATE TABLE IF NOT EXISTS user_settings (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  device_id TEXT NOT NULL UNIQUE,
-  ollama_url TEXT NOT NULL DEFAULT 'http://localhost:11434',
-  ollama_default_model TEXT NOT NULL DEFAULT 'qwen3.5',
-  qwen_tts_url TEXT NOT NULL DEFAULT 'http://localhost:7861',
-  cartesia_api_key TEXT NOT NULL DEFAULT '',
-  gemini_api_key TEXT DEFAULT '',
-  is_muted BOOLEAN NOT NULL DEFAULT false,
-  dark_mode BOOLEAN NOT NULL DEFAULT true,
-  auto_start_tts BOOLEAN NOT NULL DEFAULT true,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_user_settings_device_id ON user_settings(device_id);
-CREATE INDEX IF NOT EXISTS idx_user_settings_updated_at ON user_settings(updated_at DESC);
 
 ALTER TABLE user_settings ENABLE ROW LEVEL SECURITY;
 
@@ -52,19 +34,8 @@ CREATE TRIGGER update_user_settings_updated_at
     EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================
--- DISCUSSIONS TABLE
+-- DISCUSSIONS - RLS
 -- ============================================
-
-CREATE TABLE IF NOT EXISTS discussions (
-    id TEXT PRIMARY KEY,
-    title TEXT NOT NULL,
-    topic TEXT,
-    timestamp TIMESTAMPTZ DEFAULT NOW(),
-    message_count INTEGER DEFAULT 0,
-    preview TEXT,
-    messages JSONB DEFAULT '[]',
-    agents JSONB DEFAULT '[]'
-);
 
 ALTER TABLE discussions ENABLE ROW LEVEL SECURITY;
 
@@ -80,28 +51,9 @@ CREATE POLICY "Allow update discussions" ON discussions FOR UPDATE USING (true);
 DROP POLICY IF EXISTS "Allow delete discussions" ON discussions;
 CREATE POLICY "Allow delete discussions" ON discussions FOR DELETE USING (true);
 
-CREATE INDEX IF NOT EXISTS idx_discussions_timestamp ON discussions(timestamp DESC);
-CREATE INDEX IF NOT EXISTS idx_discussions_title ON discussions(title);
-
 -- ============================================
--- CONVERSATIONS TABLE (LEGACY)
+-- CONVERSATIONS - RLS
 -- ============================================
-
-CREATE TABLE IF NOT EXISTS conversations (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  topic TEXT NOT NULL,
-  transcript TEXT NOT NULL,
-  manager_verdict TEXT NOT NULL,
-  user_summary TEXT NOT NULL,
-  todo_list TEXT NOT NULL,
-  approval_gate TEXT NOT NULL,
-  shared_memory TEXT NOT NULL,
-  agents TEXT[] NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_conversations_created_at ON conversations(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_conversations_topic ON conversations USING gin(to_tsvector('english', topic));
 
 ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
 
@@ -113,10 +65,3 @@ CREATE POLICY "Allow insert access" ON conversations FOR INSERT WITH CHECK (true
 
 DROP POLICY IF EXISTS "Allow delete access" ON conversations;
 CREATE POLICY "Allow delete access" ON conversations FOR DELETE USING (true);
-
--- ============================================
--- FIX USER_SETTINGS UNIQUE CONSTRAINT
--- ============================================
-
-ALTER TABLE user_settings DROP CONSTRAINT IF EXISTS user_settings_device_id_unique;
-ALTER TABLE user_settings ADD CONSTRAINT user_settings_device_id_unique UNIQUE (device_id);

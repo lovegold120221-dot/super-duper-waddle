@@ -1,0 +1,287 @@
+version: '3.8'
+
+services:
+  # ─────────────────────────────────────────────────────────────
+  # Core Infrastructure
+  # ─────────────────────────────────────────────────────────────
+  
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ─────────────────────────────────────────────────────────────
+  # Meeting Bus (Real-time communication)
+  # ─────────────────────────────────────────────────────────────
+  
+  meeting-bus:
+    build:
+      context: ./services/meeting-bus
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8002"
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - REDIS_URL=redis://redis:6379
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ─────────────────────────────────────────────────────────────
+  # Memory Service (Learning & persistence)
+  # ─────────────────────────────────────────────────────────────
+  
+  memory:
+    build:
+      context: ./services/memory
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      - REDIS_URL=redis://redis:6379
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ─────────────────────────────────────────────────────────────
+  # Orchestrator (Meeting coordination)
+  # ─────────────────────────────────────────────────────────────
+  
+  orchestrator:
+    build:
+      context: ./services/orchestrator
+      dockerfile: Dockerfile
+    ports:
+      - "8003:8003"
+    depends_on:
+      redis:
+        condition: service_healthy
+      meeting-bus:
+        condition: service_healthy
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - MEETING_BUS_URL=ws://meeting-bus:8002
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ─────────────────────────────────────────────────────────────
+  # Agent Services (6 independent AI agents)
+  # ─────────────────────────────────────────────────────────────
+  
+  agent-atlas:
+    build:
+      context: ./services/agents/base_agent
+      dockerfile: Dockerfile
+    environment:
+      - AGENT_NAME=atlas
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      - OLLAMA_URL=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen3:8b}
+      - MEETING_BUS_URL=ws://meeting-bus:8002
+      - MEMORY_SERVICE_URL=http://memory:8001
+      - REDIS_URL=redis://redis:6379
+      - DEEPGRAM_API_KEY=53e38bd851d1646434640bc291cdd95469a5b238
+      - CARTESIA_API_KEY=sk_car_zXkapw9X8CycqEWfebGaEf
+      - GEMINI_API_KEY=AIzaSyBdWmYyRc0aD5NlDqBs4vgJTtYRYl0KG7Y
+    depends_on:
+      meeting-bus:
+        condition: service_healthy
+      memory:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  agent-veda:
+    build:
+      context: ./services/agents/base_agent
+      dockerfile: Dockerfile
+    environment:
+      - AGENT_NAME=veda
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      - OLLAMA_URL=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen3:8b}
+      - MEETING_BUS_URL=ws://meeting-bus:8002
+      - MEMORY_SERVICE_URL=http://memory:8001
+      - REDIS_URL=redis://redis:6379
+      - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}
+    depends_on:
+      meeting-bus:
+        condition: service_healthy
+      memory:
+        condition: service_healthy
+
+  agent-echo:
+    build:
+      context: ./services/agents/base_agent
+      dockerfile: Dockerfile
+    environment:
+      - AGENT_NAME=echo
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      - OLLAMA_URL=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen3:8b}
+      - MEETING_BUS_URL=ws://meeting-bus:8002
+      - MEMORY_SERVICE_URL=http://memory:8001
+      - REDIS_URL=redis://redis:6379
+      - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}
+    depends_on:
+      meeting-bus:
+        condition: service_healthy
+      memory:
+        condition: service_healthy
+
+  agent-nova:
+    build:
+      context: ./services/agents/base_agent
+      dockerfile: Dockerfile
+    environment:
+      - AGENT_NAME=nova
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      - OLLAMA_URL=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen3:8b}
+      - MEETING_BUS_URL=ws://meeting-bus:8002
+      - MEMORY_SERVICE_URL=http://memory:8001
+      - REDIS_URL=redis://redis:6379
+      - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}
+    depends_on:
+      meeting-bus:
+        condition: service_healthy
+      memory:
+        condition: service_healthy
+
+  agent-cipher:
+    build:
+      context: ./services/agents/base_agent
+      dockerfile: Dockerfile
+    environment:
+      - AGENT_NAME=cipher
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      - OLLAMA_URL=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen3:8b}
+      - MEETING_BUS_URL=ws://meeting-bus:8002
+      - MEMORY_SERVICE_URL=http://memory:8001
+      - REDIS_URL=redis://redis:6379
+      - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}
+    depends_on:
+      meeting-bus:
+        condition: service_healthy
+      memory:
+        condition: service_healthy
+
+  agent-nexus:
+    build:
+      context: ./services/agents/base_agent
+      dockerfile: Dockerfile
+    environment:
+      - AGENT_NAME=nexus
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      - OLLAMA_URL=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen3:8b}
+      - MEETING_BUS_URL=ws://meeting-bus:8002
+      - MEMORY_SERVICE_URL=http://memory:8001
+      - REDIS_URL=redis://redis:6379
+      - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}
+    depends_on:
+      meeting-bus:
+        condition: service_healthy
+      memory:
+        condition: service_healthy
+
+  # ─────────────────────────────────────────────────────────────
+  # Ollama (Local LLM) - Optional, use cloud if preferred
+  # ─────────────────────────────────────────────────────────────
+  
+  # Uncomment if using local Ollama
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+  #   environment:
+  #     - OLLAMA_HOST=0.0.0.0
+
+  # ─────────────────────────────────────────────────────────────
+  # Supertonic TTS (Real-time on-device TTS)
+  # ─────────────────────────────────────────────────────────────
+  
+  supertonic-tts:
+    build:
+      context: ./services/supertonic-tts
+      dockerfile: Dockerfile
+    ports:
+      - "8004:8004"
+    environment:
+      - SUPERTONIC_INTRA_OP_THREADS=4
+      - SUPERTONIC_INTER_OP_THREADS=4
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ─────────────────────────────────────────────────────────────
+  # Gemini Live TTS (Realtime speech via WebSocket)
+  # ─────────────────────────────────────────────────────────────
+  
+  gemini-live-tts:
+    build:
+      context: ./services/gemini-live-tts
+      dockerfile: Dockerfile
+    ports:
+      - "8005:8005"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ─────────────────────────────────────────────────────────────
+  # Frontend (React app)
+  # ─────────────────────────────────────────────────────────────
+  
+  # frontend:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.frontend
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     - ORCHESTRATOR_URL=http://orchestrator:8003
+  #     - MEETING_BUS_WS=ws://meeting-bus:8002
+  #   depends_on:
+  #     - orchestrator
+
+volumes:
+  redis_data:
+  # ollama_data:
+
+# Networks for service communication
+networks:
+  default:
+    name: strategy-nexus

@@ -7,7 +7,7 @@ const GEMINI_TTS_API = "streamGenerateContent";
 const GEMINI_TTS_VOICES = [
   'Orus',
   'Puck',
-  'Charon', 
+  'Charon',
   'Kore',
   'Fenrir',
   'Zephyr',
@@ -62,11 +62,11 @@ export async function generateGeminiTTS(text: string, voice: string = 'Orus'): P
 
     // Get the response as array buffer
     const audioBuffer = await response.arrayBuffer();
-    
+
     // Convert to base64 for audio playback
     const audioBase64 = btoa(String.fromCharCode(...new Uint8Array(audioBuffer)));
     const audioDataUrl = `data:audio/wav;base64,${audioBase64}`;
-    
+
     return audioDataUrl;
 
   } catch (error) {
@@ -78,7 +78,7 @@ export async function generateGeminiTTS(text: string, voice: string = 'Orus'): P
 export async function checkGeminiKey(): Promise<boolean> {
   try {
     if (!GEMINI_API_KEY) return false;
-    
+
     // Test with a simple request
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_TTS_MODEL}:${GEMINI_TTS_API}?key=${GEMINI_API_KEY}`,
@@ -102,7 +102,7 @@ export async function checkGeminiKey(): Promise<boolean> {
         })
       }
     );
-    
+
     return response.ok;
   } catch {
     return false;

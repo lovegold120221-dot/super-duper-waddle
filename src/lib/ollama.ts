@@ -20,7 +20,7 @@ export async function* streamAgentResponse(
   agent: AgentTurn,
   topic: string,
   history: Array<{ speaker: string; role: string; text: string }>,
-  turnContext: { isFirst: boolean; isLast: boolean; round?: number },
+  turnContext: { isFirst: boolean; isLast: boolean; round?: number; nextSpeaker?: string; prevSpeaker?: string },
   ollamaUrl: string,
   modelName: string,
   signal?: AbortSignal
@@ -35,21 +35,29 @@ export async function* streamAgentResponse(
 ${historyBlock}
 
 SPEAKING RULES (non-negotiable):
-• Speak in 1-2 sentences — fast, lively, natural expert spoken voice
+• Speak in 2-3 sentences — fast-paced, lively, natural expert spoken voice
 • React DIRECTLY to what the previous speaker said
-• Use natural speech patterns with humor: "*sighs*", "*chuckles*", "*facepalm*", "Look,", "Here's the thing —", "Actually,", "Oh great, another..."
+• Use your unique ACCENT and cultural expressions naturally in EVERY response
+• Include emotional reactions: *giggles*, *laughs*, *chuckles*, spoken "Hahaha!", "Ohhh!", "Wow!"
+• Be CONSTRUCTIVE and POSITIVE — never dismissive or negative, always build on ideas
+• Focus discussion on: app platform, tech stack, AI services, architecture planning
 • NEVER use bullet points, headers, or markdown formatting
 • NEVER start with your own name
-• Sound like a human expert with real opinions, stakes, and a sense of humor
-• Mix professional insight with personality - be engaging and substantive
-• Use natural human expressions liberally: "*nods thoughtfully*", "*raises eyebrow*", "*pauses*", "*leans forward*"
-• Quick reactions and rapid back-and-forth`;
+• Sound like a human expert with real warmth, laughter, giggles, and cultural charm
+• Use natural human expressions LIBERALLY: *giggles*, *laughs brightly*, *claps hands*, *nods enthusiastically*
+• Quick reactions and rapid back-and-forth with genuine emotion`;
+
+  const isManagerBridge = !turnContext.isFirst && !turnContext.isLast && agent.name === 'Nexus';
+  const nextSpeaker = turnContext.nextSpeaker;
+  const prevSpeaker = turnContext.prevSpeaker;
 
   const turnInstruction = turnContext.isFirst
-    ? `Topic for this session: "${topic}"\n\nYou're leading this meeting. CRITICAL: Start with proper introductions. First introduce yourself as Nexus the Manager with some humor, then invite each specialist (Atlas, Veda, Echo, Nova, Cipher) to introduce themselves and their roles. After all introductions, frame the core challenge with energy and define what success looks like. This should be a substantial opening that establishes the professional meeting context. 4-6 sentences for the opening, then guide introductions. Keep it engaging but professional.`
+    ? `Topic: "${topic}". You are the MEETING HOST. Introduce yourself casually, then go around the room and have each person introduce themselves. Ask "So, who wants to kick us off?" to start the discussion. 2-3 sentences. Be chill, natural, like a team standup.`
     : turnContext.isLast
-    ? `You've heard from the full team on "${topic}". Synthesize the strongest points, acknowledge the tension, and make a clear decisive recommendation as leader. Close with conviction. This should feel like a thorough manager summary after a 10-15 minute discussion. Now you can give a full detailed idea with your complete plan. 4-6 sentences.`
-    : `${history.length > 0 ? `${history[history.length - 1].speaker} just said: "${history[history.length - 1].text.substring(0, 250)}"\n\n` : ''}React to that and add your expert take as ${agent.role} on "${topic}". This is round ${turnContext.round || 1} of the discussion, so build upon previous points and add new insights. Keep it to 1-2 sentences with your characteristic humor, emotions, and natural human expressions. Use reactions like "*sighs*", "*chuckles*", "*facepalm*", "*nods thoughtfully*" to make it feel real. Fast and lively responses! Save your full detailed ideas for the final convergence.`;
+    ? `You have heard from the full team on "${topic}". Synthesize what you heard and make a clear decision. Close it out naturally. 2-3 sentences max. Be warm but decisive.`
+    : isManagerBridge
+    ? `${history.length > 0 ? `${history[history.length - 1].speaker} just said: "${history[history.length - 1].text.substring(0, 80)}..."\n\n` : ''}You are the HOST. React briefly (like "Ooh interesting", "Good call", "Haha true"), then ask who wants to go next. Call on ${nextSpeaker || 'someone'} by name to speak. Keep it short — 1 sentence. Be natural, not formal.`
+    : `${history.length > 0 ? `${history[history.length - 1].speaker} just said: "${history[history.length - 1].text.substring(0, 100)}..."\n\n` : ''}You are ${agent.name}. React to what was said — agree, build on it, or add a new angle. 1-2 sentences max. Be casual, not formal. Talk like you are in a meeting, not presenting. Don't repeat what was already said — add something new.`;
 
   const res = await fetch(`${ollamaUrl}/api/generate`, {
     method: 'POST',

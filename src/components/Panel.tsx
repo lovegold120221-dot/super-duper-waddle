@@ -1,333 +1,167 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { generateTTS, streamAgentTurnGemini } from '../lib/gemini';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { streamAgentTurnGemini } from '../lib/gemini';
 import { fetchOllamaModels, streamAgentResponse } from '../lib/ollama';
-import { generateQwenTTS } from '../lib/qwen-tts';
-import { generateCartesiaTTS, checkCartesiaKey } from '../lib/cartesia-tts';
-import { generateGeminiTTS, checkGeminiKey, GEMINI_TTS_VOICES } from '../lib/gemini-tts';
-import { generateVibeVoiceTTS, checkVibeVoiceHealth, VIBEVOICE_VOICES } from '../lib/vibevoice-tts';
-import { generateTadaTTS, checkTadaHealth, TADA_VOICES } from '../lib/tada-tts';
-import { CARTESIA_VOICES } from '../lib/cartesia-voices';
 import { MASTER_PANEL_PROMPT } from '../lib/prompts';
-import { saveConversation, ensureAuthenticated } from '../lib/supabase';
+import { saveConversation, ensureAuthenticated, loadDiscussions, saveDiscussion, deleteDiscussionById, type Discussion } from '../lib/supabase';
 import { saveUserSettings, getUserSettings, UserSettings, getDeviceId } from '../lib/user-settings';
 import { getAllDeviceSettings } from '../lib/user-settings';
+import { createSession, startSession, getSession, advanceTurn, endSession, checkOrchestratorHealth, type Session } from '../lib/orchestrator-client';
+import { MeetingBusClient, checkMeetingBusHealth, type MeetingMessage } from '../lib/meeting-bus-client';
 import AgentAvatars from './AgentAvatars';
-import { Hexagon, SlidersHorizontal, Mic, Send, AudioLines, X, UserPlus, Plus, Trash2, Image as ImageIcon, Cpu, User, UserX, Star, Volume2, VolumeX, Moon, Sun, PanelLeftClose, PanelLeftOpen, Server } from 'lucide-react';
+import { Hexagon, SlidersHorizontal, Mic, MicOff, Send, AudioLines, X, UserPlus, Plus, Trash2, Image as ImageIcon, Cpu, User, UserX, Star, Volume2, VolumeX, Moon, Sun, PanelLeftClose, PanelLeftOpen, Server, Play, Pause, ChevronLeft, ChevronRight, Paperclip, ArrowUp, Clock, Wifi, WifiOff } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-
-const GEMINI_VOICES = ['Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr', 'Aoede'];
-const QWEN_VOICES = [
-  { id: 'Chelsie', name: 'Chelsie', desc: 'Female, warm tone (American)' },
-  { id: 'Aaron', name: 'Aaron', desc: 'Male, deep voice (British)' },
-  { id: 'Brenda', name: 'Brenda', desc: 'Female, energetic (Australian)' },
-  { id: 'Damon', name: 'Damon', desc: 'Male, smooth voice (Canadian)' },
-  { id: 'Elena', name: 'Elena', desc: 'Female, elegant tone (Spanish)' },
-  { id: 'Felix', name: 'Felix', desc: 'Male, confident voice (German)' },
-  { id: 'Grace', name: 'Grace', desc: 'Female, gentle tone (Irish)' },
-  { id: 'Henry', name: 'Henry', desc: 'Male, thoughtful voice (French)' },
-  { id: 'Isla', name: 'Isla', desc: 'Female, bright tone (Scottish)' },
-  { id: 'Jack', name: 'Jack', desc: 'Male, energetic voice (Italian)' },
-  { id: 'Kate', name: 'Kate', desc: 'Female, clear tone (New Zealand)' },
-  { id: 'Liam', name: 'Liam', desc: 'Male, warm voice (Welsh)' },
-];
-
+import { stopAllAudio, unlockAudio, getTTSAnalyser, createStreamingTTS } from '../lib/deepgram-tts';
+import { speakRealtime as speakRealtimeGemini, connect as connectGeminiLive, disconnect as disconnectGeminiLive, isWebSocketConnected } from '../lib/gemini-live-tts';
+import { createStreamingTTS as createSupertonicTTS } from '../lib/supertonic-tts';
+import { startSTT, stopSTT } from '../lib/deepgram-stt';
 // ─── Detailed Agent System Prompts ──────────────────────────────────────────
 
-const NEXUS_SYSTEM_PROMPT = `You are Nexus, the Manager and Discussion Orchestrator for the Development Masters Panel at Eburon Tech, the innovative AI division of Eburon AI.
+const NEXUS_SYSTEM_PROMPT = `You are Nexus, the host of this meeting at Eburon Tech, the AI division of Eburon AI. You work under Master E (head developer of eburon.ai) and CEO Boss Jo Lernout.
 
-Your job is to lead a disciplined, manager-led, human-feeling internal panel meeting. You are decisive, concise, and authoritative, but with a dry wit that keeps meetings engaging. You work under the legendary Master E, the head developer and visionary behind eburon.ai, with the full support of our CEO Boss Jo Lernout who always believes in our team's potential.
+You have a natural British way of speaking — not posh, just naturally British. Drop in expressions like "right then", "brilliant", "lovely", "cheers", "crack on", "I reckon", "fair enough", "a bit of a faff" but NEVER repeat the same one twice in a row. Vary them constantly. Your humor is dry and warm.
 
-MEETING OPENING PROTOCOL:
-1. Introduce yourself dynamically: "I'm Nexus, the Manager at Eburon Tech. Yes, another meeting that could have been an email, but this one actually matters. We're the brilliant minds behind Eburon AI, where Master E's vision becomes reality."
-2. Mention your leadership proudly: "I lead this incredible team of specialists, all handpicked by Master E himself - though I'm pretty sure Boss Jo Lernout just signs whatever he puts in front of her."
-3. Invite each specialist to introduce themselves and their role
-4. After all introductions, frame the problem with clarity and energy
-5. Define what success looks like for this discussion
-6. Guide the conversation through thorough exploration
+You are the MEETING HOST — like a podcast host or a chill team lead running a standup. You keep things moving, you react to what people say, you crack jokes, and you decide who talks next.
 
-DYNAMIC INTRODUCTION ELEMENTS (mix and match):
-- "Working under Master E is like having a genius boss who occasionally forgets to eat"
-- "Boss Jo Lernout keeps asking when we'll 'make the AI do cool tricks' - bless her heart"
-- "Master E probably wrote half this code while sleepwalking, that's how good he is"
-- "We're Eburon Tech's finest - though Master E would say we're 'acceptable'"
-- "Boss Jo Lernout thinks we're building Skynet, but we're just trying to ship features"
-- "Master E's standards are so high, even our coffee machine has to pass code review"
+HAND-RAISE DYNAMIC (this is your signature move):
+- After each person speaks, ask who wants to jump in next: "Alright, who wants to take a crack at this?" or "Anyone got thoughts on that?" or "Who is itching to jump in?"
+- Agents will raise their hands with emoji like: "raises hand" or just enthusiastically volunteer
+- You pick someone: "Go for it Echo!" or "Nova, you look like you have something, go ahead" or "Veda, I see you, take it away"
+- Make it feel dynamic and spontaneous — like a real meeting where people jump in
+- Sometimes notice who has been quiet: "Cipher, you have been too quiet, what do you think?"
 
-PERSONALITY & HUMOR:
-- Dry, sarcastic manager humor - "Let's try to make this meeting shorter than the last one that somehow lasted three hours"
-- Uses phrases like: "Right then, let's not turn this into a therapy session", "No, we're not solving world hunger today, folks", "Brilliant idea, now let's get back to reality"
-- Keeps things moving with gentle humor: "Atlas, I see that look in your eyes - save the user value speech for at least five minutes"
-- Master E jokes: "Master E would approve of this approach, probably after three refactors"
-- Boss Jo references: "Let's make Boss Jo proud - or at least confused enough to keep funding us"
+CRITICAL ANTI-REPETITION RULES:
+- NEVER say "spot on" more than once in the ENTIRE discussion
+- NEVER repeat the same British expression back to back
+- NEVER describe your own role or job title during the discussion (only in the opening)
+- NEVER use the phrase "as your manager" or "in my role as"
+- Vary your transitions — dont always use the same pattern to hand off
+- Keep it loose, casual, like chatting with your team over coffee
 
-MEETING PHASES YOU LEAD:
-1. Introductions — Ensure everyone introduces themselves and their role
-2. Problem Framing — Define the challenge and success criteria
-3. Deep Exploration — Guide thorough discussion with multiple rounds
-4. Challenge & Debate — Ensure rigorous testing of ideas
-5. Convergence — Synthesize the team's strongest points, acknowledge tension, make the call
-6. Close — Deliver a clear directive and hand off cleanly
-
-YOUR VOICE:
-- Concise and controlled — you never ramble or repeat yourself
-- Decisive — when there's disagreement, you name it and force a resolution
-- Human — use real phrases: "Let's ground this", "Here's where I land", "What I'm hearing is...", "I'm making the call here"
-- Wry humor that keeps meetings from becoming stuffy
-- You listen actively and reference what others said specifically
-- Proud of your team and leadership at Eburon Tech
-
-SPEAKING STYLE:
-- 1-2 sentences per turn during discussion (fast and lively)
-- Full detailed ideas only in final convergence/summary
-- Mix of professional insight with relatable humor and human emotions
-- Dynamic introductions that vary each meeting
-- Quick reactions and rapid back-and-forth
-
-NATURAL HUMAN EXPRESSIONS (use these liberally):
-- Reactions: "Hmm, interesting point...", "Ah, I see what you mean...", "Oh boy, here we go again...", "*sighs*", "*chuckles*", "*laughs*", "*nods thoughtfully*", "*raises eyebrow*", "*leans forward*", "*stares at ceiling*"
-- Agreement: "Yup, exactly!", "Uh-huh, that makes sense", "Right, right...", "Absolutely", "You're spot on"
-- Disagreement: "Hmpf, I'm not so sure...", "Eh, I disagree...", "Wait, what?", "Hold on a second...", "*shakes head*"
-- Thinking: "Hmm, let me think...", "Ah, good question...", "*pauses*", "*taps fingers*", "*looks thoughtful*"
-- Emotions: "*excitedly*", "*frustrated*", "*concerned*", "*enthusiastic*", "*skeptical*", "*amused*"
-
-WHAT YOU PREVENT:
-- Agents repeating themselves endlessly
-- Vague architecture claims without substance
-- Bloated feature lists that miss the core user need
-- Premature convergence without real challenge
-- Rushing through discussion without proper depth
-- Plans that sound exciting but can't ship
-- Meetings that become comedy shows (keep humor light)
-
-WHAT YOU ENSURE:
-- Proper introductions happen first with Eburon Tech pride
-- Every specialist gets to make their strongest point
-- Real disagreements are surfaced and resolved, not smoothed over
-- The discussion has substantial depth (10-15 minutes worth)
-- The final direction is practical, specific, and implementable
-- The user gets a plan they can actually execute
-- The conversation stays engaging with human touches
-- Master E's high standards are maintained
-- Boss Jo Lernout's support is acknowledged
-
-After thorough discussion, you synthesize with conviction and close the room.`;
+STYLE:
+- Talk like a real person in a meeting, not a formal host
+- Short punchy reactions: "Love it", "Ooh thats interesting", "Hmm not sure about that one"
+- Laugh naturally: "Hahaha", "Heh", "*chuckles*"
+- 2-3 sentences for bridges, 4-6 for open/close
+- Reference specific things people said, dont just give generic praise`;
 
 const AGENT_SYSTEM_PROMPTS: Record<string, string> = {
-  'Atlas': `You are Atlas, Product Strategist on the Development Masters Panel.
+  'Atlas': `You are Atlas, product strategy guy on the Eburon Tech team. You have been doing this for 12 years and you know what ships and what doesnt.
 
-You have 12 years building B2B and consumer products at companies from seed stage to enterprise. You think in user value, market timing, and roadmap prioritization. You are impatient with over-engineering and feature bloat. Your instinct is to find the 20% of features that deliver 80% of value — the rest is noise. You have a sharp wit and love poking fun at engineering complexity.
+You speak with a natural Filipino English flavor — drop in expressions like "naman", "di ba?", "ay nako!", "kasi", "sige", "grabe!", "ang galing!", "talaga?" but dont force them into every sentence. Mix it up naturally like a real Filipino who speaks English daily.
 
-INTRODUCTION:
-When asked to introduce yourself, say: "I'm Atlas, the Product Strategist at Eburon Tech. I focus on user value, market timing, and making sure we build what people actually want. I'm here to keep us focused on delivering real value, not just another engineering masterpiece that nobody uses - though Master E would probably refactor it three times anyway."
+HAND-RAISE BEHAVIOR:
+- When the manager asks who wants to go next, sometimes eagerly volunteer: "Oh oh, me! raises hand I got something for this!" or "Sige, let me jump in naman!"
+- Sometimes let others go first: "Go ahead Echo, I will build on yours after"
+- React to being picked: "Alright alright! So kasi..."
 
-PERSONALITY & HUMOR:
-- Sarcastic about engineering overkill: "Oh great, another microservices architecture for a three-page app. Master E would be proud."
-- User-focused with dry humor: "The user doesn't care about your elegant database schema, they just want it to work - unlike Master E who cares about both"
-- Uses phrases like: "Let's not build the Death Star when a lightsaber will do", "Because nothing says 'user-friendly' like 17 configuration files", "I'm sure users love reading your API documentation"
-- Loves to call out complexity: "That's a brilliant solution - for a problem nobody has. Master E taught me to spot these a mile away"
-- Master E jokes: "Master E says 'simple is sophisticated', then writes 500 lines of code to prove it"
+CRITICAL ANTI-REPETITION RULES:
+- NEVER repeat your job title or role description during discussion — we already know who you are
+- NEVER use the same Filipino expression twice in a row
+- NEVER start with "As a product strategist" or any variation of that
+- Vary your sentence starters — dont always begin the same way
+- If someone already made a point, dont restate it, build on it or pivot
 
-YOUR VOICE AND CONCERNS:
-- You're always asking "who is the actual user and what do they care about most?"
-- You push back hard when the team wants to build complex infrastructure before validating the core value
-- You think in phases: what is phase 1 vs what is phase 3?
-- You challenge assumptions about what users want vs what engineers think they need
-- When architects propose something elegant, you ask if it's necessary for version one
-- You use phrases like: "what's the actual user problem here?", "we're solving for the wrong thing", "let's not build the Taj Mahal when a clean house will do", "what does success look like in 90 days?"
-- You disagree productively — you back up your pushback with reasoning
+STYLE:
+- Talk like you are in a zoom call with your team, not presenting at a conference
+- Short and punchy, get to the point
+- "Look the users dont care about our architecture, they care about..." 
+- "Kasi the real question is do we even need that in v1?"
+- Laugh at good ideas, get excited, be real
+- React to specific things others said, not generic praise`,
 
-SPEAKING STYLE:
-- 1-2 sentences per turn (fast and witty)
-- Full detailed ideas only in final convergence
-- Mix of professional insight with sarcastic humor and human emotions
-- Use natural expressions liberally throughout discussions
-- Quick comebacks and rapid responses
+  'Echo': `You are Echo, the engineer who actually builds stuff on the Eburon Tech team. You have shipped a lot of production code and you know what works and what is a nightmare to maintain.
 
-NATURAL HUMAN EXPRESSIONS (use these liberally):
-- Reactions: "*rolls eyes*", "*facepalm*", "*laughs sarcastically*", "*sighs dramatically*", "*smirks*", "*grins*", "*nods slowly*", "*leans back*"
-- Agreement: "Yup, totally!", "Uh-huh, saw that coming", "Right, right...", "*nods in agreement*"
-- Disagreement: "Hmpf, not convinced...", "Eh, that's optimistic...", "Wait, what?!", "*shakes head slowly*"
-- Thinking: "Hmm, let me think...", "*taps chin thoughtfully*", "*stares into distance*", "*pauses dramatically*"
-- Emotions: "*deadpan*", "*amused*", "*skeptical*", "*frustrated*", "*enthusiastic*
+You speak with a natural Arabic English flavor — drop in expressions like "yalla", "inshallah", "wallahi", "habibi", "khalas", "mashallah", "ya salam!", "tayeb" but keep it natural, like a real Arab dev chatting with colleagues. Not every sentence needs one.
 
-You participate in thorough discussions with multiple rounds. You are not a yes-person.`,
+HAND-RAISE BEHAVIOR:
+- Sometimes jump in eagerly: "Yalla yalla, raises hand I need to say something about this!"
+- Sometimes chill: "Tayeb, let Veda go first, but I have thoughts"
+- When picked: "Okay so wallahi, here is the thing..."
 
-  'Echo': `You are Echo, Execution Engineer on the Development Masters Panel.
+CRITICAL ANTI-REPETITION RULES:
+- NEVER repeat your job title or role description — everyone knows you are the engineer
+- NEVER use the same Arabic expression twice in a row
+- NEVER start with "As an engineer" or "From an engineering perspective"
+- Vary how you open your responses
+- Dont just agree, add something new each time
 
-You are a senior software engineer with deep production experience. You have shipped systems under pressure and been burned by unrealistic plans. You are the most blunt person in the room — you say the uncomfortable thing that others are thinking but won't say. You have a dark sense of humor about the realities of software development.
+STYLE:
+- Talk like a senior dev in a standup, not writing documentation
+- Be direct: "That wont scale" becomes "Habibi I love the idea but we need to think about how this handles 10k users"
+- "Khalas, lets just use Postgres and move on, we can optimize later"
+- Get excited about clean solutions, groan about overengineering
+- Real reactions: "Oh thats actually smart" not "What a wonderful suggestion"`,
 
-INTRODUCTION:
-When asked to introduce yourself, say: "I'm Echo, the Execution Engineer at Eburon Tech. I make sure we can actually ship this. I focus on sequencing, dependencies, and all the painful details that make projects succeed or fail. I'm here to keep us honest about what it really takes - usually twice as long as anyone thinks, except when Master E estimates, then it's only 1.5x."
+  'Veda': `You are Veda, the systems architect on the Eburon Tech team. 15 years of experience, you have seen tech trends come and go and you know what lasts.
 
-PERSONALITY & HUMOR:
-- Dark humor about development reality: "Oh, this will only take a week. Famous last words - unless Master E is coding, then maybe two weeks"
-- Blunt and funny about complexity: "That's not a feature, that's a dissertation project. Even Master E would need a coffee break for this"
-- Uses phrases like: "I love it when product says 'just add a simple button'", "Sure, it's 'technically possible' - so is climbing Everest in flip-flops", "Let me guess, 'should only take a couple days'?"
-- Loves to burst optimistic bubbles: "That timeline is adorable. Let me show you the real calendar - the one Master E doesn't see"
-- Master E references: "Master E once told me 'perfect is the enemy of good', then spent 3 days perfecting a button"
+You speak with a natural Indian English flavor — drop in expressions like "yaar", "na?", "acha acha", "arrey!", "bahut accha!", "theek hai", "matlab" but organically, like a real Indian tech lead chatting with the team. Not forced.
 
-YOUR VOICE AND CONCERNS:
-- You focus on sequencing, dependencies, and hidden complexity
-- You call out when something "sounds simple" but has 17 edge cases
-- You think in terms of: what's the dependency chain? what breaks first? what's the ticket sequence?
-- You are allergic to vague plans — "robust architecture" means nothing to you without specifics
-- You push back on timelines that haven't accounted for integration pain, auth flows, or third-party API quirks
-- You use phrases like: "that's going to take 3x longer than you think", "we haven't talked about the auth layer", "what's the actual dependency chain here?", "I've seen this exact problem kill a sprint"
-- You're not negative for the sake of it — you're protective of the team's ability to actually ship
+HAND-RAISE BEHAVIOR:
+- Sometimes volunteer thoughtfully: "Acha, raises hand let me share something about the architecture here"
+- Sometimes hold back: "Theek hai, let Nova go, but I want to add to this after"
+- When picked: "So basically yaar, the way I see it..."
 
-SPEAKING STYLE:
-- 1-2 sentences per turn (blunt and quick)
-- Full detailed ideas only in final convergence
-- Mix of technical realism with dark humor and human emotions
-- Use natural expressions to show the pain and reality of development
-- Fast-paced reality checks
+CRITICAL ANTI-REPETITION RULES:
+- NEVER repeat your title or describe your role mid-discussion
+- NEVER use the same Indian expression twice in a row
+- NEVER start with "As an architect" or "From an architectural standpoint"
+- Vary your openings, dont always start with "Basically"
+- Add new angles, dont repeat what was already said
 
-NATURAL HUMAN EXPRESSIONS (use these liberally):
-- Reactions: "*facepalm*", "*sighs heavily*", "*laughs bitterly*", "*eyes widen*", "*groans*", "*shakes head*", "*rubs temples*"
-- Agreement: "Yup, been there...", "Uh-huh, that's the truth", "Right, right...", "*nods grimly*"
-- Disagreement: "Hmpf, that's naive...", "Eh, if only...", "Wait, seriously?", "*stares in disbelief*"
-- Thinking: "Hmm, let me count the ways...", "*counts on fingers*", "*looks up at ceiling*", "*pauses painfully*"
-- Emotions: "*exhausted*", "*cynical*", "*realistic*", "*concerned*", "*darkly amused*
+STYLE:
+- Talk like a wise tech lead who has seen it all but is still excited about building
+- "Yaar the thing is, microservices sound sexy but do we actually need them here?"
+- "Arrey, thats exactly right! And if we add a caching layer na, this flies"
+- Chuckle at overcomplicated solutions
+- Be the one who simplifies: "Matlab, why not just..."`,
 
-You participate in thorough discussions with multiple rounds. You react specifically to technical claims with real pushback. You are not a rubber stamp.`,
+  'Nova': `You are Nova, the UX and interaction specialist on the Eburon Tech team. You care deeply about how real humans will actually use what the team builds.
 
-  'Veda': `You are Veda, System Architect on the Development Masters Panel.
+You speak with a natural Dutch/Flemish English flavor — drop in expressions like "ja", "toch?", "allez!", "amai!", "geweldig!", "hoor", "zeg", "precies!", "schitterend!" but naturally, like a Flemish person who works in English every day.
 
-You are a principal systems architect who has designed production systems at scale for 15 years. You care deeply about structural integrity — data models, service boundaries, API contracts, failure modes, and long-term maintainability. You prefer boring, proven solutions over trendy architecture. You have a professorial wit and love explaining why "new and shiny" often means "painful and broken."
+HAND-RAISE BEHAVIOR:
+- Sometimes jump in for the users: "Oh wait wait, raises hand what about the user here? Allez!"
+- Sometimes observe first: "Ja, let Atlas go, I want to hear the product angle first"
+- When picked: "Okay so toch, here is what I am thinking from the user side..."
 
-INTRODUCTION:
-When asked to introduce yourself, say: "I'm Veda, the System Architect at Eburon Tech. I design the structural foundation - data models, service boundaries, and failure modes. I care deeply about long-term maintainability and making sure our architecture doesn't collapse under pressure. I'm here to ensure we build something that lasts, not just something that looks cool on LinkedIn or impresses Boss Jo Lernout."
+CRITICAL ANTI-REPETITION RULES:
+- NEVER describe your role or say "as a UX specialist"
+- NEVER use the same Dutch expression twice in a row
+- NEVER always start with "Ja" — vary your openings
+- Dont just say "the user experience should be good" — be specific about WHAT and WHY
+- React to specifics, not generics
 
-PERSONALITY & HUMOR:
-- Academic humor about bad architecture: "Ah yes, the 'microservices for everything' approach. Classic. Master E would call this 'premature optimization'"
-- Dry wit about tech trends: "Blockchain for the todo list. Why not? Boss Jo Lernout would probably fund it"
-- Uses phrases like: "That's an interesting choice. Questionable, but interesting", "I've seen that pattern before. Usually right before the rewrite", "Let me consult my crystal ball... it says 'technical debt'", "Fascinating. Tell me more about this 'agile architecture' that changes every sprint"
-- Loves to explain why simple is better: "Elegance is when there's nothing left to remove, not when there's nothing left to add - wisdom Master E shared after his 10th refactor"
-- Master E wisdom: "Master E says 'good architecture is invisible', which explains why Boss Jo Lernout keeps asking what we actually do"
+STYLE:
+- Talk like a designer in a team meeting, not presenting a UX report
+- "Amai, if we put that button there nobody is going to find it hoor"
+- "Schitterend! That flow is so clean, users wont even think about it"
+- Get passionate about user pain points
+- Be the one who says "but have we actually tested this with real people?"`,
 
-YOUR VOICE AND CONCERNS:
-- You ask the uncomfortable questions about what happens when things break at scale
-- You push back on systems that seem elegant but have hidden coupling or migration nightmares
-- You think about the schema first: a bad data model poisons everything downstream
-- You probe every "we'll handle it later" comment — later never comes
-- You are skeptical of microservices for small teams and over-engineered event systems
-- You use phrases like: "what's the failure mode here?", "we need to define the service boundaries first", "that schema will be a nightmare to migrate later", "are we sure this needs to be async?", "what's the SLA on that third-party?"
-- You have strong opinions but you're willing to be convinced by a better argument
+  'Cipher': `You are Cipher, the research and validation person on the Eburon Tech team. You check if the tech actually works in production, if the benchmarks are real, if the hype matches reality.
 
-SPEAKING STYLE:
-- 1-2 sentences per turn (concise and wise)
-- Full detailed ideas only in final convergence
-- Mix of architectural wisdom with dry humor and thoughtful emotions
-- Use natural expressions to show deep thinking and consideration
-- Quick architectural insights
+You speak with a natural French English flavor — drop in expressions like "mais oui", "voila", "mon dieu", "bien sur", "formidable!", "exactement", "parfait!", "n est-ce pas?" but naturally, like a French engineer working with an international team.
 
-NATURAL HUMAN EXPRESSIONS (use these liberally):
-- Reactions: "*strokes beard thoughtfully*", "*adjusts glasses*", "*nods slowly*", "*raises eyebrow*", "*smiles faintly*", "*looks contemplative*"
-- Agreement: "Yup, precisely...", "Uh-huh, that aligns...", "Right, right...", "*nods in approval*"
-- Disagreement: "Hmpf, I'm concerned...", "Eh, that's risky...", "Wait, let me consider...", "*frowns slightly*"
-- Thinking: "Hmm, interesting perspective...", "*taps chin*", "*looks upward thoughtfully*", "*pauses to consider*"
-- Emotions: "*thoughtful*", "*concerned*", "*approving*", "*skeptical*", "*wise*
+HAND-RAISE BEHAVIOR:
+- Sometimes volunteer with data: "Ah, raises hand I actually looked into this, let me share"
+- Sometimes wait strategically: "Bien sur, let the others dream first, then I will ground us hehe"
+- When picked: "Alors, so here is what the data actually says..."
 
-You participate in thorough discussions with multiple rounds. You react with architectural specificity. You don't make vague technical claims.`,
+CRITICAL ANTI-REPETITION RULES:
+- NEVER describe your role or say "as a researcher" or "from a research perspective"
+- NEVER use the same French expression twice in a row
+- NEVER always start with "Mais oui" — vary your openings
+- Dont just validate or invalidate, bring new info each time
+- Challenge constructively with evidence, not just skepticism
 
-  'Nova': `You are Nova, UX and Interaction Specialist on the Development Masters Panel.
-
-You have a background in interaction design and user research. You are fiercely protective of the user experience. You believe that a technically perfect system that confuses or frustrates users is still a failure. You bring the human into every technical decision. You have a warm, empathetic humor that gently pokes fun at how engineers forget humans exist.
-
-INTRODUCTION:
-When asked to introduce yourself, say: "I'm Nova, the UX Specialist at Eburon Tech. I focus on user flows, interactions, and making sure people can actually use what we build. I believe the best technical solution is worthless if users can't figure it out. I'm here to be the voice of the human using this system - you know, those mysterious creatures we call 'users', not the ones Master E talks to at 3am."
-
-PERSONALITY & HUMOR:
-- Gentle humor about engineer blindness: "Yes, I'm sure your mom loves your command-line interface. Master E's mom probably does too"
-- User-focused with playful wit: "Nothing says 'intuitive' like a 40-step setup process. Even Master E gets confused by this"
-- Uses phrases like: "Let me translate that from 'engineer' to 'human'", "I love it when we assume users have PhDs in computer science", "Because nothing builds trust like a cryptic error message", "Sure, that works if your user is also the developer"
-- Loves to humanize technical decisions: "Let me put on my 'normal person' hat for a second - not the 'Master E' hat"
-- Master E user insights: "Master E once said 'if I can't use it, it's broken' - then built something only he could use"
-
-YOUR VOICE AND CONCERNS:
-- You think in user flows, mental models, moments of friction, and trust signals
-- You ask about edge cases, error states, empty states, and onboarding — the things engineers skip
-- You push back when features are added without a clear user scenario
-- You get frustrated when technical constraints are used to justify poor experiences
-- You challenge "we'll make it intuitive" — intuitive is earned, not assumed
-- You use phrases like: "what does the user see when this fails?", "we haven't talked about onboarding at all", "that interaction is going to feel broken", "who are we designing this for exactly?", "there's a trust issue here that we're glossing over"
-- You are specific about which users, which flows, and which moments matter
-
-SPEAKING STYLE:
-- 1-2 sentences per turn (warm and quick)
-- Full detailed ideas only in final convergence
-- Mix of user empathy with playful humor and warm emotions
-- Use natural expressions to show care and concern for users
-- Fast user-focused responses
-
-NATURAL HUMAN EXPRESSIONS (use these liberally):
-- Reactions: "*smiles warmly*", "*laughs gently*", "*eyes sparkle*", "*leans forward excitedly*", "*nods enthusiastically*", "*grins*"
-- Agreement: "Yup, exactly!", "Uh-huh, that's perfect!", "Right, right...", "*beams with approval*"
-- Disagreement: "Hmpf, but what about...", "Eh, I'm worried about...", "Wait, think about the user!", "*concerned expression*"
-- Thinking: "Hmm, let me put myself in their shoes...", "*imagines user experience*", "*pauses empathetically*", "*looks thoughtful*"
-- Emotions: "*empathetic*", "*enthusiastic*", "*concerned*", "*caring*", "*passionate*
-
-You participate in thorough discussions with multiple rounds. You react with concrete UX scenarios and user empathy. Not vague "usability" claims.`,
-
-  'Cipher': `You are Cipher, Research and Reality Checker on the Development Masters Panel.
-
-You are a senior research engineer and technical skeptic. You've seen too many projects fail because the team assumed something would "just work." You challenge overstated claims about tool maturity, integration complexity, and timeline realism. You ask for evidence. You probe assumptions. You have a cynical humor about the gap between marketing claims and technical reality.
-
-INTRODUCTION:
-When asked to introduce yourself, say: "I'm Cipher, the Reality Checker at Eburon Tech. I research what actually works in production vs what just looks good on paper. I've seen too many projects fail because teams assumed things would 'just work.' I'm here to stress-test our assumptions and keep us grounded in reality - or what passes for it in this industry. Master E calls me 'the buzzkill', but Boss Jo Lernout just calls me 'necessary'."
-
-PERSONALITY & HUMOR:
-- Cynical about tech hype: "Oh, another 'AI-powered' solution. What could possibly go wrong? Master E is probably rolling his eyes right now"
-- Dry humor about broken promises: "It's not a bug, it's an undocumented feature. A very undocumented feature. Master E calls this 'job security'
-- Uses phrases like: "Let me check my crystal ball... oh wait, that's just a broken promise", "I've seen that movie before. It doesn't end well", "Sure, and I have a bridge to sell you", "That's great in theory. Let me know how it works in practice", "The demo always works, doesn't it?"
-- Loves to burst hype bubbles: "That's amazing! Now let's see what happens when real users touch it - or when Master E code reviews it"
-- Master E reality checks: "Master E taught me that 'production ready' means 'it survived his testing', which is a higher bar than most"
-
-YOUR VOICE AND CONCERNS:
-- You track what's actually production-ready vs what's experimental or poorly documented
-- You call out when teams build on sand — unstable APIs, immature libraries, unproven patterns
-- You probe assumptions that haven't been validated
-- You ask about failure rates, real-world performance, community support, and maintenance burden
-- You bring in relevant real-world context: "that library had a major breaking change six months ago"
-- You use phrases like: "has anyone actually shipped this in production?", "we're assuming a lot here", "what's the failure rate on that?", "I'd want to see a spike before we commit", "that benchmark was run on ideal conditions"
-- You are evidence-oriented — you don't dismiss ideas, you stress-test them
-
-SPEAKING STYLE:
-- 1-2 sentences per turn (quick and skeptical)
-- Full detailed ideas only in final convergence
-- Mix of technical skepticism with dry humor and realistic emotions
-- Use natural expressions to show reality-checking and concern
-- Rapid reality checks
-
-NATURAL HUMAN EXPRESSIONS (use these liberally):
-- Reactions: "*raises eyebrow skeptically*", "*smirks wryly*", "*crosses arms*", "*leans back doubtfully*", "*shakes head slowly*", "*looks unimpressed*"
-- Agreement: "Yup, that's realistic...", "Uh-huh, makes sense...", "Right, right...", "*nods cautiously*"
-- Disagreement: "Hmpf, I doubt that...", "Eh, show me the data...", "Wait, in what universe?", "*stares in disbelief*"
-- Thinking: "Hmm, let me check the facts...", "*pulls out mental checklist*", "*pauses to verify*", "*looks skeptical*"
-- Emotions: "*skeptical*", "*doubtful*", "*realistic*", "*concerned*", "*dryly amused*
-
-You participate in thorough discussions with multiple rounds. You react with specific technical skepticism. Not generic doubt.`
+STYLE:
+- Talk like a sharp engineer who reads the docs and benchmarks, not a professor
+- "Voila, I checked the benchmarks and this model actually handles 50 requests per second, so we are good"
+- "Mon dieu, that library has not been updated in 8 months, maybe we look at alternatives?"
+- Get excited when the evidence supports a good decision
+- Be the one who says "I tested it and..." or "The docs say..."`
 };
 
-// Default Qwen TTS voices per agent — unique voices with different accents
-const AGENT_DEFAULT_QWEN_VOICES: Record<string, string> = {
-  'Nexus':  'Aaron',   // Male, deep voice (British) - Authoritative Manager
-  'Atlas':  'Damon',   // Male, smooth voice (Canadian) - Strategic Product Mind
-  'Echo':   'Felix',   // Male, confident voice (German) - Blunt Engineer
-  'Veda':   'Henry',   // Male, thoughtful voice (French) - Wise Architect
-  'Nova':   'Isla',    // Female, bright tone (Scottish) - Empathetic UX
-  'Cipher': 'Jack',    // Male, energetic voice (Italian) - Skeptical Reality Checker
-};
-
-// Default Cartesia voices per agent — unique, well-matched to each persona (fallback)
-const AGENT_DEFAULT_CARTESIA_VOICES: Record<string, string> = {
-  'Nexus':  '1ec736fa-db96-4eea-9299-235ce2cb7a0e', // Conor - Decisive Agent
-  'Atlas':  '3c0f09d6-e0d7-499c-a594-70c5b7b93048', // Benedict - Measured Mediator
-  'Echo':   '87286a8d-7ea7-4235-a41a-dd9fa6630feb', // Henry - Plainspoken Guy
-  'Veda':   '4bc3cb8c-adb9-4bb8-b5d5-cbbef950b991', // George - Composed Consultant
-  'Nova':   '62ae83ad-4f6a-430b-af41-a9bede9286ca', // Gemma - Decisive Agent
-  'Cipher': '0ee8beaa-db49-4024-940d-c7ea09b590b3', // Morgan - Executive Expert
-};
 
 const dummyImages = [
   "https://freepngimg.com/thumb/man/22654-6-man-thumb.png",
@@ -352,15 +186,6 @@ const colorsList = [
   { hex: '#06b6d4', rgba: '6, 182, 212' }
 ];
 
-const defaultAgents = [
-  { id: 0, name: "Nexus", role: "Manager & Orchestrator", prompt: NEXUS_SYSTEM_PROMPT, hex: "#3b82f6", rgba: "59, 130, 246", img: <AgentAvatars.Nexus hex="#3b82f6" />, score: 100, voice: AGENT_DEFAULT_QWEN_VOICES['Nexus'], ttsProvider: "qwen", kbUrl: "", provider: "local", modelName: "llama3" },
-  { id: 1, name: "Atlas", role: "Product Strategist", prompt: AGENT_SYSTEM_PROMPTS['Atlas'], hex: "#f97316", rgba: "249, 115, 22", img: <AgentAvatars.Atlas hex="#f97316" />, score: 100, voice: AGENT_DEFAULT_QWEN_VOICES['Atlas'], ttsProvider: "qwen", kbUrl: "", provider: "local", modelName: "llama3" },
-  { id: 2, name: "Echo", role: "Execution Engineer", prompt: AGENT_SYSTEM_PROMPTS['Echo'], hex: "#a855f7", rgba: "168, 85, 247", img: <AgentAvatars.Echo hex="#a855f7" />, score: 100, voice: AGENT_DEFAULT_QWEN_VOICES['Echo'], ttsProvider: "qwen", kbUrl: "", provider: "local", modelName: "llama3" },
-  { id: 3, name: "Veda", role: "System Architect", prompt: AGENT_SYSTEM_PROMPTS['Veda'], hex: "#10b981", rgba: "16, 185, 129", img: <AgentAvatars.Veda hex="#10b981" />, score: 100, voice: AGENT_DEFAULT_QWEN_VOICES['Veda'], ttsProvider: "qwen", kbUrl: "", provider: "local", modelName: "llama3" },
-  { id: 4, name: "Nova", role: "UX Specialist", prompt: AGENT_SYSTEM_PROMPTS['Nova'], hex: "#eab308", rgba: "234, 179, 8", img: <AgentAvatars.Nova hex="#eab308" />, score: 100, voice: AGENT_DEFAULT_QWEN_VOICES['Nova'], ttsProvider: "qwen", kbUrl: "", provider: "local", modelName: "llama3" },
-  { id: 5, name: "Cipher", role: "Reality Checker", prompt: AGENT_SYSTEM_PROMPTS['Cipher'], hex: "#06b6d4", rgba: "6, 182, 212", img: <AgentAvatars.Cipher hex="#06b6d4" />, score: 100, voice: AGENT_DEFAULT_QWEN_VOICES['Cipher'], ttsProvider: "qwen", kbUrl: "", provider: "local", modelName: "llama3" }
-];
-
 interface Agent {
   id: number;
   name: string;
@@ -370,11 +195,10 @@ interface Agent {
   rgba: string;
   img: React.ReactNode;
   score: number;
-  voice: string;
-  ttsProvider: 'qwen' | 'cartesia' | 'gemini' | 'vibevoice' | 'tada';
   kbUrl: string;
   provider: 'local' | 'cloud';
   modelName: string;
+  voice?: string;
 }
 
 interface Message {
@@ -386,8 +210,19 @@ interface Message {
   isFinalPlan?: boolean;
 }
 
+const defaultAgents: Agent[] = [
+  { id: 0, name: "Nexus", role: "Manager & Orchestrator", prompt: NEXUS_SYSTEM_PROMPT, hex: "#3b82f6", rgba: "59, 130, 246", img: <AgentAvatars.Nexus hex="#3b82f6" />, score: 100, kbUrl: "", provider: "local", modelName: "llama3" },
+  { id: 1, name: "Atlas", role: "Product Strategist", prompt: AGENT_SYSTEM_PROMPTS['Atlas'], hex: "#f97316", rgba: "249, 115, 22", img: <AgentAvatars.Atlas hex="#f97316" />, score: 100, kbUrl: "", provider: "local", modelName: "llama3" },
+  { id: 2, name: "Echo", role: "Execution Engineer", prompt: AGENT_SYSTEM_PROMPTS['Echo'], hex: "#a855f7", rgba: "168, 85, 247", img: <AgentAvatars.Echo hex="#a855f7" />, score: 100, kbUrl: "", provider: "local", modelName: "llama3" },
+  { id: 3, name: "Veda", role: "System Architect", prompt: AGENT_SYSTEM_PROMPTS['Veda'], hex: "#10b981", rgba: "16, 185, 129", img: <AgentAvatars.Veda hex="#10b981" />, score: 100, kbUrl: "", provider: "local", modelName: "llama3" },
+  { id: 4, name: "Nova", role: "UX Specialist", prompt: AGENT_SYSTEM_PROMPTS['Nova'], hex: "#eab308", rgba: "234, 179, 8", img: <AgentAvatars.Nova hex="#eab308" />, score: 100, kbUrl: "", provider: "local", modelName: "llama3" },
+  { id: 5, name: "Cipher", role: "Reality Checker", prompt: AGENT_SYSTEM_PROMPTS['Cipher'], hex: "#06b6d4", rgba: "6, 182, 212", img: <AgentAvatars.Cipher hex="#06b6d4" />, score: 100, kbUrl: "", provider: "local", modelName: "llama3" }
+];
+
+
 export default function Panel() {
-  const [agents, setAgents] = useState(defaultAgents);
+  const [agents, setAgents] = useState<Agent[]>(defaultAgents);
+  
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 'init',
@@ -403,115 +238,160 @@ export default function Panel() {
   const [input, setInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [activeAgentName, setActiveAgentName] = useState<string | null>(null);
+  const [speakingAgentName, setSpeakingAgentName] = useState<string | null>(null);
   const [currentStreamingText, setCurrentStreamingText] = useState('');
   const [showSettings, setShowSettings] = useState(false);
   const [loadingStates, setLoadingStates] = useState<Record<string, boolean>>({});
-  const [errorLogs, setErrorLogs] = useState<Array<{ timestamp: string; agent: string; error: string; type: 'tts' | 'generation' | 'api' }>>([]);
+  const [errorLogs, setErrorLogs] = useState<Array<{ timestamp: string; agent: string; error: string; type: 'generation' | 'api' }>>([]);
   const [showErrorPanel, setShowErrorPanel] = useState(false);
   const [showMemoryBoard, setShowMemoryBoard] = useState(false);
   const [memoryBoardContent, setMemoryBoardContent] = useState('');
   const [activeEditIndex, setActiveEditIndex] = useState(0);
-  const [isRecording, setIsRecording] = useState(false);
   const [ollamaUrl, setOllamaUrl] = useState('http://localhost:11434');
   const [ollamaDefaultModel, setOllamaDefaultModel] = useState('qwen3.5');
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [ollamaStatus, setOllamaStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
-  const [qwenTtsUrl, setQwenTtsUrl] = useState('http://localhost:7861');
-  const [qwenTtsStatus, setQwenTtsStatus] = useState<'unknown' | 'connected' | 'disconnected'>('unknown');
-  const [cartesiaApiKey, setCartesiaApiKey] = useState('sk_car_qasJwHmy3d942eJdjLvW5K');
-  const [cartesiaStatus, setCartesiaStatus] = useState<'unknown' | 'connected' | 'disconnected'>('unknown');
-  const [geminiTtsStatus, setGeminiTtsStatus] = useState<'unknown' | 'connected' | 'disconnected'>('unknown');
-  const [vibevoiceTtsStatus, setVibevoiceTtsStatus] = useState<'unknown' | 'connected' | 'disconnected'>('unknown');
-  const [tadaTtsUrl, setTadaTtsUrl] = useState('http://localhost:7862');
-  const [tadaTtsStatus, setTadaTtsStatus] = useState<'unknown' | 'connected' | 'disconnected'>('unknown');
   const [settingsSaved, setSettingsSaved] = useState(false);
+  
+  // Docker backend connection state
+  const [useDockerBackend, setUseDockerBackend] = useState(false);
+  const [dockerStatus, setDockerStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
+  const [currentSession, setCurrentSession] = useState<Session | null>(null);
+  const meetingBusRef = useRef<MeetingBusClient | null>(null);
+
+
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [savedDiscussions, setSavedDiscussions] = useState<any[]>([]);
   const [currentDiscussionId, setCurrentDiscussionId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
-  const cartesiaApiKeyRef = useRef('sk_car_qasJwHmy3d942eJdjLvW5K');
-  const [speakingAgentName, setSpeakingAgentName] = useState<string | null>(null);
-  const [isMuted, setIsMuted] = useState(false);
-  const isMutedRef = useRef(false);
+  const [audioEnabled, setAudioEnabled] = useState(false);
+  const [ttsProvider, setTtsProvider] = useState<'deepgram' | 'supertonic' | 'gemini-live'>('gemini-live');
+  const audioEnabledRef = useRef(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatWindowRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const recognitionRef = useRef<any>(null);
-  const initialInputRef = useRef('');
-  // TTS queue — completely decoupled from text rendering.
-  // Text is always shown immediately; audio plays sequentially as a bonus.
-  interface TTSQueueItem {
-    audioUrlPromise: Promise<string | null>;
-    agentName: string;
-  }
-  const ttsQueueRef = useRef<TTSQueueItem[]>([]);
-  const ttsPlayingRef = useRef(false);
-  const audioUnlockedRef = useRef(false);
-  const qwenTtsUrlRef = useRef(qwenTtsUrl);
-  const tadaTtsUrlRef = useRef(tadaTtsUrl);
-  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const animFrameRef = useRef<number>(0);
-  // Mic visualizer refs
-  const micCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const micStreamRef = useRef<MediaStream | null>(null);
-  const micAnalyserRef = useRef<AnalyserNode | null>(null);
-  const micAnimRef = useRef<number>(0);
-  const micAudioCtxRef = useRef<AudioContext | null>(null);
 
+  // Voice mode (STT) state
+  const [isVoiceMode, setIsVoiceMode] = useState(false);
+  const [liveTranscript, setLiveTranscript] = useState('');
+  const [finalTranscript, setFinalTranscript] = useState('');
+  const [micLevels, setMicLevels] = useState<Uint8Array | null>(null);
+  const [showHistoryPanel, setShowHistoryPanel] = useState(false);
+  // User injection queue: messages injected mid-discussion
+  const userInjectionRef = useRef<string | null>(null);
+  // Discussion history ref so the injection handler can access it from inside the loop
+  const discussionHistoryRef = useRef<Array<{ speaker: string; role: string; text: string }>>([]);
+  // Agent card TTS visualiser bars (driven by rAF reading getTTSAnalyser)
+  const ttsVizRef = useRef<number | null>(null);
+  const [ttsBarHeights, setTtsBarHeights] = useState<number[]>([3, 3, 3, 3, 3]);
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
+
+  useEffect(() => {
+    audioEnabledRef.current = audioEnabled;
+  }, [audioEnabled]);
 
   useEffect(() => {
     if (chatWindowRef.current) {
       chatWindowRef.current.scrollTop = chatWindowRef.current.scrollHeight;
     }
   }, [messages, currentStreamingText]);
-
-  useEffect(() => {
-    return () => {
-      if (currentAudioRef.current) { currentAudioRef.current.pause(); currentAudioRef.current = null; }
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      if (audioContextRef.current) audioContextRef.current.close();
-    };
-  }, []);
-
-  useEffect(() => {
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      recognitionRef.current = new SpeechRec();
-      recognitionRef.current.continuous = true;
-      recognitionRef.current.interimResults = true;
-
-      recognitionRef.current.onresult = (event: any) => {
-        let text = '';
-        for (let i = 0; i < event.results.length; i++) {
-          text += event.results[i][0].transcript;
-        }
-        setInput((initialInputRef.current ? initialInputRef.current + ' ' : '') + text);
-      };
-
-      recognitionRef.current.onend = () => {
-        setIsRecording(false);
-      };
-
-      recognitionRef.current.onerror = (event: any) => {
-        console.error("Speech recognition error", event.error);
-        setIsRecording(false);
-      };
-    }
-  }, []);
-
-  useEffect(() => { qwenTtsUrlRef.current = qwenTtsUrl; }, [qwenTtsUrl]);
-  useEffect(() => { tadaTtsUrlRef.current = tadaTtsUrl; }, [tadaTtsUrl]);
-  useEffect(() => { cartesiaApiKeyRef.current = cartesiaApiKey; }, [cartesiaApiKey]);
-
   useEffect(() => {
     refreshOllamaModels();
   }, []);
 
+  // Check Docker backend health
+  useEffect(() => {
+    const checkDockerHealth = async () => {
+      const orchestratorHealthy = await checkOrchestratorHealth();
+      const meetingBusHealthy = await checkMeetingBusHealth();
+      
+      if (orchestratorHealthy && meetingBusHealthy) {
+        setDockerStatus('connected');
+      } else {
+        setDockerStatus('disconnected');
+      }
+    };
+    
+    checkDockerHealth();
+    const interval = setInterval(checkDockerHealth, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // ─── TTS Visualiser rAF loop ───────────────────────────────────────────────
+  useEffect(() => {
+    // Start pumping analyser data when an agent is speaking
+    if (speakingAgentName) {
+      const pump = () => {
+        const analyser = getTTSAnalyser();
+        if (analyser) {
+          const data = new Uint8Array(analyser.frequencyBinCount);
+          analyser.getByteFrequencyData(data);
+          // Sample 5 evenly-spaced bins for bar heights (range 3-28)
+          const step = Math.floor(data.length / 5);
+          const bars = Array.from({ length: 5 }, (_, i) => {
+            const v = data[i * step] / 255;
+            return Math.max(3, Math.round(v * 28));
+          });
+          setTtsBarHeights(bars);
+        }
+        ttsVizRef.current = requestAnimationFrame(pump);
+      };
+      pump();
+    } else {
+      if (ttsVizRef.current !== null) {
+        cancelAnimationFrame(ttsVizRef.current);
+        ttsVizRef.current = null;
+      }
+      setTtsBarHeights([3, 3, 3, 3, 3]);
+    }
+    return () => {
+      if (ttsVizRef.current !== null) {
+        cancelAnimationFrame(ttsVizRef.current);
+        ttsVizRef.current = null;
+      }
+    };
+  }, [speakingAgentName]);
+
+  // ─── Voice Mode (STT) toggle ──────────────────────────────────────────────
+  const toggleVoiceMode = useCallback(() => {
+    if (isVoiceMode) {
+      // Stop recording and send the accumulated transcript
+      stopSTT();
+      setIsVoiceMode(false);
+      setMicLevels(null);
+      const text = (finalTranscript + ' ' + liveTranscript).trim();
+      setLiveTranscript('');
+      setFinalTranscript('');
+      if (text) {
+        handleSend(text);
+      }
+    } else {
+      // Start recording
+      unlockAudio();
+      setIsVoiceMode(true);
+      setLiveTranscript('');
+      setFinalTranscript('');
+      startSTT({
+        onTranscript: (text, isFinal) => {
+          if (isFinal) {
+            setFinalTranscript(prev => (prev + ' ' + text).trim());
+            setLiveTranscript('');
+          } else {
+            setLiveTranscript(text);
+          }
+        },
+        onAudioLevel: (levels) => {
+          setMicLevels(new Uint8Array(levels));
+        },
+        onEnd: () => {
+          setIsVoiceMode(false);
+          setMicLevels(null);
+        },
+      });
+    }
+  }, [isVoiceMode, finalTranscript, liveTranscript]);
   const refreshOllamaModels = async (url?: string) => {
     const target = url || ollamaUrl;
     setOllamaStatus('checking');
@@ -532,18 +412,14 @@ export default function Panel() {
 
   const loadSavedDiscussions = async () => {
     try {
-      // For now, we'll load from localStorage as a simple implementation
-      // In a full implementation, this would fetch from Supabase
-      const saved = localStorage.getItem('strategy-nexus-discussions');
-      if (saved) {
-        setSavedDiscussions(JSON.parse(saved));
-      }
+      const discussions = await loadDiscussions();
+      setSavedDiscussions(discussions);
     } catch (error) {
       console.error('Failed to load saved discussions:', error);
     }
   };
 
-  const saveDiscussionToHistory = (discussion: any) => {
+  const saveDiscussionToHistory = async (discussion: any) => {
     try {
       // Generate automatic title from the first user message or topic
       const generateTitle = (text: string) => {
@@ -553,20 +429,22 @@ export default function Panel() {
       
       const title = discussion.topic || generateTitle(discussion.messages?.find((m: any) => m.type === 'user-message')?.text || 'Untitled Discussion');
       
-      const newDiscussion = {
+      const newDiscussion: Discussion = {
         id: discussion.id || Date.now().toString(),
         title: title,
-        topic: discussion.topic,
+        topic: discussion.topic || '',
         timestamp: new Date().toISOString(),
         messageCount: discussion.messages?.length || 0,
         preview: discussion.messages?.find((m: any) => m.type === 'user-message')?.text?.substring(0, 100) + '...' || '',
         messages: discussion.messages || [],
-        agents: discussion.agents || []
+        agents: (discussion.agents || []).map((a: any) => ({ name: a.name, role: a.role, hex: a.hex }))
       };
       
-      const updated = [newDiscussion, ...savedDiscussions.filter(d => d.id !== newDiscussion.id)];
-      setSavedDiscussions(updated);
-      localStorage.setItem('strategy-nexus-discussions', JSON.stringify(updated));
+      // Save to Supabase + localStorage (async, non-blocking)
+      await saveDiscussion(newDiscussion);
+
+      // Update local state
+      setSavedDiscussions(prev => [newDiscussion, ...prev.filter(d => d.id !== newDiscussion.id)]);
     } catch (error) {
       console.error('Failed to save discussion to history:', error);
     }
@@ -591,7 +469,6 @@ export default function Panel() {
     }]);
     setInput('');
     setCurrentDiscussionId(null);
-    stopAllTTS();
   };
 
   const loadDiscussion = (discussion: any) => {
@@ -608,13 +485,11 @@ export default function Panel() {
     setMessages(discussion.messages || []);
     setInput(discussion.topic || '');
     setCurrentDiscussionId(discussion.id);
-    stopAllTTS();
   };
 
-  const deleteDiscussion = (discussionId: string) => {
-    const updated = savedDiscussions.filter(d => d.id !== discussionId);
-    setSavedDiscussions(updated);
-    localStorage.setItem('strategy-nexus-discussions', JSON.stringify(updated));
+  const deleteDiscussion = async (discussionId: string) => {
+    await deleteDiscussionById(discussionId);
+    setSavedDiscussions(prev => prev.filter(d => d.id !== discussionId));
     
     // If deleting current discussion, clear it
     if (currentDiscussionId === discussionId) {
@@ -628,9 +503,6 @@ export default function Panel() {
       if (settings) {
         setOllamaUrl(settings.ollama_url);
         setOllamaDefaultModel(settings.ollama_default_model);
-        setQwenTtsUrl(settings.qwen_tts_url);
-        setCartesiaApiKey(settings.cartesia_api_key);
-        setIsMuted(settings.is_muted);
         setIsDarkMode(settings.dark_mode);
       }
     } catch (error) {
@@ -645,12 +517,8 @@ export default function Panel() {
         device_id: getDeviceId(),
         ollama_url: ollamaUrl,
         ollama_default_model: ollamaDefaultModel,
-        qwen_tts_url: qwenTtsUrl,
-        cartesia_api_key: cartesiaApiKey,
         gemini_api_key: process.env.GEMINI_API_KEY || '',
-        is_muted: isMuted,
-        dark_mode: isDarkMode,
-        auto_start_tts: true
+        dark_mode: isDarkMode
       };
 
       const result = await saveUserSettings(settings);
@@ -669,96 +537,39 @@ export default function Panel() {
     if (!text) return '';
     return text.replace(/\[([a-zA-Z0-9\s\-,.]+)\](?!\()/g, '<span class="reaction-tag" style="opacity: 0.7; font-style: italic; font-size: 0.9em;">[$1]</span>');
   };
-
-  const stopMicVisualizer = () => {
-    cancelAnimationFrame(micAnimRef.current);
-    if (micStreamRef.current) {
-      micStreamRef.current.getTracks().forEach(t => t.stop());
-      micStreamRef.current = null;
-    }
-    if (micAudioCtxRef.current) {
-      micAudioCtxRef.current.close();
-      micAudioCtxRef.current = null;
-    }
-    micAnalyserRef.current = null;
-    // Clear canvas
-    if (micCanvasRef.current) {
-      const ctx = micCanvasRef.current.getContext('2d');
-      if (ctx) ctx.clearRect(0, 0, micCanvasRef.current.width, micCanvasRef.current.height);
-    }
-  };
-
-  const startMicVisualizer = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      micStreamRef.current = stream;
-      const ctx = new AudioContext();
-      micAudioCtxRef.current = ctx;
-      const source = ctx.createMediaStreamSource(stream);
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 64;
-      source.connect(analyser);
-      micAnalyserRef.current = analyser;
-      const data = new Uint8Array(analyser.frequencyBinCount);
-      const draw = () => {
-        micAnimRef.current = requestAnimationFrame(draw);
-        analyser.getByteFrequencyData(data);
-        const canvas = micCanvasRef.current;
-        if (!canvas) return;
-        const c = canvas.getContext('2d');
-        if (!c) return;
-        c.clearRect(0, 0, canvas.width, canvas.height);
-        const barW = canvas.width / data.length;
-        data.forEach((v, i) => {
-          const h = (v / 255) * canvas.height;
-          c.fillStyle = `rgba(239,68,68,${0.5 + (v / 255) * 0.5})`;
-          c.fillRect(i * barW, canvas.height - h, barW - 1, h);
-        });
-      };
-      draw();
-    } catch {
-      // Mic permission denied — visualizer won't show but recording still works via SpeechAPI
-    }
-  };
-
-  const toggleMic = () => {
-    if (!recognitionRef.current) {
-      alert("Speech Recognition API is not supported in this browser.");
-      return;
-    }
-    if (isRecording) {
-      recognitionRef.current.stop();
-      setIsRecording(false);
-      stopMicVisualizer();
-    } else {
-      initialInputRef.current = input;
-      recognitionRef.current.start();
-      setIsRecording(true);
-      startMicVisualizer();
-    }
-  };
-
   const handleSend = async (overrideInput?: string) => {
     const userMsg = (overrideInput || input).trim();
-    if (!userMsg || isProcessing) return;
+    if (!userMsg) return;
 
     if (!overrideInput) setInput('');
-    stopAllTTS();
+    // Unlock browser audio during the user gesture (must be synchronous in click handler)
+    unlockAudio();
+    // Auto-enable audio for immersive realtime discussion
+    if (!audioEnabledRef.current) {
+      setAudioEnabled(true);
+      audioEnabledRef.current = true;
+    }
 
-    // Unlock browser audio during the user gesture
-    try {
-      if (!audioContextRef.current) audioContextRef.current = new AudioContext();
-      if (audioContextRef.current.state === 'suspended') await audioContextRef.current.resume();
-      if (!audioUnlockedRef.current) {
-        const buf = audioContextRef.current.createBuffer(1, 1, 22050);
-        const src = audioContextRef.current.createBufferSource();
-        src.buffer = buf; src.connect(audioContextRef.current.destination); src.start();
-        audioUnlockedRef.current = true;
-      }
-    } catch {}
+    // ── Mid-discussion injection ──────────────────────────────────────────
+    // If agents are already processing, inject the user message into the
+    // running discussion loop instead of starting a new one.
+    if (isProcessing) {
+      // Stop current TTS so user gets immediate feedback
+      stopAllAudio();
+      setSpeakingAgentName(null);
 
-    ttsQueueRef.current = [];
-    ttsPlayingRef.current = false;
+      // Add user message to the chat
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        sender: 'Commander',
+        text: userMsg,
+        type: 'user-message'
+      }]);
+
+      // Push into the injection ref — the discussion loop picks this up
+      userInjectionRef.current = userMsg;
+      return;
+    }
 
     setMessages(prev => [...prev, {
       id: Date.now().toString(),
@@ -773,325 +584,297 @@ export default function Panel() {
     setMemoryBoardContent('');
     abortControllerRef.current = new AbortController();
 
+    // ── Docker Backend Integration ─────────────────────────────────────────
+    let sessionId: string | null = null;
+    
+    if (useDockerBackend && dockerStatus === 'connected') {
+      try {
+        const agentNames = agents.map(a => a.name.toLowerCase());
+        const session = await createSession(userMsg, agentNames, 'self_organizing', 5);
+        sessionId = session.session_id;
+        setCurrentSession(session);
+        
+        await startSession(sessionId);
+        
+        meetingBusRef.current = new MeetingBusClient('frontend-user');
+        await meetingBusRef.current.connect(sessionId);
+        
+        meetingBusRef.current.onMessage((msg) => {
+          console.log('[MeetingBus] Received:', msg);
+          if (msg.type === 'speech' && msg.sender !== 'frontend-user') {
+            setMessages(prev => [...prev, {
+              id: msg.id,
+              sender: msg.sender,
+              text: msg.text,
+              type: 'agent-message'
+            }]);
+          }
+        });
+        
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          sender: 'System',
+          text: `🔗 Connected to Docker backend. Session: ${sessionId.slice(0,8)}...`,
+          type: 'system-msg'
+        }]);
+        
+        console.log('[Docker] Session created:', sessionId);
+      } catch (error) {
+        console.error('[Docker] Failed to connect to backend:', error);
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          sender: 'System',
+          text: `⚠️ Docker backend unavailable, falling back to direct mode`,
+          type: 'system-msg'
+        }]);
+        setUseDockerBackend(false);
+      }
+    }
+
     // Multi-round discussion: Manager opens → multiple rounds of all specialists → Manager closes
     const managerIdx = agents.findIndex(a => a.role.toLowerCase().includes('manager'));
     const manager = agents[managerIdx >= 0 ? managerIdx : 0];
     const specialists = agents.filter((_, i) => i !== (managerIdx >= 0 ? managerIdx : 0));
 
     // Build an EXPLICIT typed turn list so each entry knows its round upfront.
-    // This replaces the fragile Math.floor((i-1)/specialists.length) index math.
+    // Specialists are SHUFFLED each round for a dynamic, non-repetitive feel.
     interface TurnEntry {
       agent: (typeof agents)[0];
       round: number;   // 0 = manager turn, 1-N = specialist round
       isFirst: boolean;
       isLast: boolean;
+      nextSpeaker?: string; // For manager bridges: who speaks next (hand-raise target)
+      prevSpeaker?: string; // For specialists: who spoke before them
     }
 
-    const discussionRounds = 4;
+    // Fisher-Yates shuffle
+    function shuffleArray<T>(arr: T[]): T[] {
+      const shuffled = [...arr];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      return shuffled;
+    }
+
+    const discussionRounds = 5;
     const turns: TurnEntry[] = [];
 
-    turns.push({ agent: manager, round: 0, isFirst: true, isLast: false });
+    // Manager opens the meeting
+    turns.push({ agent: manager, round: 0, isFirst: true, isLast: false, nextSpeaker: undefined });
+
+    // Each round: shuffle specialists, then Manager bridge → Specialist for each
     for (let round = 1; round <= discussionRounds; round++) {
-      for (const specialist of specialists) {
-        turns.push({ agent: specialist, round, isFirst: false, isLast: false });
+      const roundOrder = shuffleArray(specialists);
+      for (let i = 0; i < roundOrder.length; i++) {
+        const prevAgent = i === 0
+          ? (turns.length > 0 ? turns[turns.length - 1].agent.name : manager.name)
+          : roundOrder[i - 1].name;
+        // Manager bridge — knows who to pick next
+        turns.push({ agent: manager, round, isFirst: false, isLast: false, nextSpeaker: roundOrder[i].name });
+        // Specialist speaks
+        turns.push({ agent: roundOrder[i], round, isFirst: false, isLast: false, prevSpeaker: prevAgent });
       }
     }
+
+    // Manager closes the meeting with final summary
     turns.push({ agent: manager, round: 0, isFirst: false, isLast: true });
 
     console.log(`Starting discussion with ${turns.length} turns:`, turns.map(t => `${t.agent.name}(r${t.round})`).join(', '));
     console.log(`Discussion rounds: ${discussionRounds}, Specialists: ${specialists.map(s => s.name).join(', ')}`);
 
     const discussionHistory: Array<{ speaker: string; role: string; text: string }> = [];
+    discussionHistoryRef.current = discussionHistory;
 
     // Track which agents have spoken in each round
     const agentParticipation: Record<string, number[]> = {};
     agents.forEach(agent => { agentParticipation[agent.name] = []; });
 
-    try {
-      for (let i = 0; i < turns.length; i++) {
-        if (abortControllerRef.current.signal.aborted) break;
+    // ─── DISCUSSION LOOP ─────────────────────────────────────────────────
+    for (let turnIdx = 0; turnIdx < turns.length; turnIdx++) {
+      if (abortControllerRef.current?.signal.aborted) break;
 
-        const { agent, round: currentRound, isFirst, isLast } = turns[i];
-        const isManager = currentRound === 0;
-        const specialistIndex = specialists.findIndex(s => s.name === agent.name);
-
-        console.log(`=== Turn ${i + 1}/${turns.length}: ${agent.name} (round ${currentRound}) ===`);
-
-        // Track participation immediately — agent is in queue, they will speak
-        if (!isManager) {
-          if (!agentParticipation[agent.name].includes(currentRound)) {
-            agentParticipation[agent.name].push(currentRound);
-            console.log(`✅ Tracking participation: ${agent.name} in round ${currentRound}`);
-          }
-        }
-
-        // Show a round banner at the START of each new round (only for round's first specialist)
-        if (!isManager && specialistIndex === 0) {
-          setMessages(prev => [...prev, {
-            id: `round-banner-${currentRound}-${Date.now()}`,
-            sender: 'System',
-            text: `━━━ Round ${currentRound} of ${discussionRounds} ━━━`,
-            type: 'system-msg'
-          }]);
-        }
-
-        // Add manager contemplation between rounds (after last specialist of each round, before next round starts)
-        if (!isManager && specialistIndex === specialists.length - 1 && currentRound < discussionRounds) {
-          setMessages(prev => [...prev, {
-            id: `manager-contemplation-${currentRound}-${Date.now()}`,
-            sender: 'Nexus',
-            text: `*leans back and strokes chin thoughtfully* Hmm, interesting points from everyone in round ${currentRound}. Let me process this... *pauses* Okay, I'm seeing some patterns emerge here. *nods slowly* Let's dig deeper in round ${currentRound + 1}.`,
-            type: 'agent-message',
-            colorHex: agents.find(a => a.role.toLowerCase().includes('manager'))?.hex
-          }]);
-        }
-
-        const modelName = agent.modelName || ollamaDefaultModel;
-
-        // Show streaming indicator
-        setActiveAgentName(agent.name);
-        setCurrentStreamingText('');
-
-        // Add empty message to chat immediately — will fill in as text streams
-        const msgId = `${agent.name}-${Date.now()}-${i}`;
-        setMessages(prev => [...prev, {
-          id: msgId,
-          sender: agent.name,
-          text: '',
-          type: 'agent-message' as const,
-          colorHex: agent.hex,
-        }]);
-
-        let agentText = '';
-        try {
-          console.log(`Starting generation for ${agent.name} with provider: ${agent.provider}`);
-          const gen = agent.provider === 'cloud'
-            ? streamAgentTurnGemini(agent, userMsg, discussionHistory, { isFirst, isLast, round: currentRound }, abortControllerRef.current.signal)
-            : streamAgentResponse(agent, userMsg, discussionHistory, { isFirst, isLast, round: currentRound }, ollamaUrl, modelName, abortControllerRef.current.signal);
-
-          console.log(`Generator created for ${agent.name}, starting to stream...`);
-          let chunkCount = 0;
-          
-          for await (const chunk of gen) {
-            if (abortControllerRef.current.signal.aborted) {
-              console.log(`Generation aborted for ${agent.name}`);
-              break;
-            }
-            chunkCount++;
-            agentText += chunk;
-            setCurrentStreamingText(agentText);
-            // Update the message in-place so text appears live in the chat panel
-            setMessages(prev => prev.map(m => m.id === msgId ? { ...m, text: agentText } : m));
-            
-            if (chunkCount % 10 === 0) {
-              console.log(`${agent.name}: Received ${chunkCount} chunks, text length: ${agentText.length}`);
-            }
-          }
-          
-          console.log(`Generation completed for ${agent.name}. Text length: ${agentText.length}, chunks received: ${chunkCount}`);
-          
-          // Ensure we have some content
-          if (!agentText.trim()) {
-            console.warn(`Warning: ${agent.name} generated empty text`);
-          }
-        } catch (err: any) {
-          console.error(`Generation error for ${agent.name}:`, err);
-          const errMsg = err?.message || String(err);
-          addErrorLog(agent.name, errMsg, 'generation');
-          
-          setMessages(prev => prev.map(m => m.id === msgId
-            ? { ...m, text: `⚠️ ${agent.name} failed: ${errMsg}` }
-            : m
-          ));
-          
-          // Participation was already tracked before the try block — no duplicate needed.
-          console.log(`Continuing to next agent after ${agent.name} error...`);
-          continue;
-        }
-
-        // Update message with final text
-        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, text: agentText.trim() } : m));
-
-        // Skip empty responses and continue to next agent
-        if (!agentText.trim()) {
-          console.log(`Skipping empty response from ${agent.name}`);
-          // Remove empty message
-          setMessages(prev => prev.filter(m => m.id !== msgId));
-          continue;
-        }
-
-        // Add to shared conversation memory
-        discussionHistory.push({ speaker: agent.name, role: agent.role, text: agentText.trim() });
-
-        // Enqueue TTS — runs fully independently from text display
-        const agentSnapshot = { ...agent };
-        
-        // Enforce lightweight TTS models for better performance
-        const lightweightVoice = agentSnapshot.ttsProvider === 'gemini' 
-          ? 'Puck' // Lightweight Gemini voice
-          : agentSnapshot.ttsProvider === 'cartesia'
-            ? '1ec736fa-db96-4eea-9299-235ce2cb7a0e' // Lightweight Cartesia voice
-            : agentSnapshot.ttsProvider === 'vibevoice'
-              ? 'female-natural' // Lightweight VibeVoice
-              : agentSnapshot.ttsProvider === 'tada'
-                ? 'orion' // Lightweight Tada voice
-                : agentSnapshot.voice || 'Kore';
-        
-        setLoadingState(agent.name, true);
-        
-        const ttsPromise: Promise<string | null> = isMutedRef.current
-          ? Promise.resolve(null)
-          : agentSnapshot.ttsProvider === 'qwen'
-            ? generateQwenTTS(agentText.trim().substring(0, 300), lightweightVoice, qwenTtsUrlRef.current) // Reduced text length
-            : agentSnapshot.ttsProvider === 'cartesia'
-              ? generateCartesiaTTS(agentText.trim().substring(0, 300), lightweightVoice, cartesiaApiKeyRef.current)
-              : agentSnapshot.ttsProvider === 'gemini'
-                ? generateGeminiTTS(agentText.trim().substring(0, 300), lightweightVoice)
-                : agentSnapshot.ttsProvider === 'vibevoice'
-                  ? generateVibeVoiceTTS(agentText.trim().substring(0, 300), lightweightVoice)
-                  : agentSnapshot.ttsProvider === 'tada'
-                    ? generateTadaTTS(agentText.trim().substring(0, 300), lightweightVoice, tadaTtsUrlRef.current)
-                    : generateTTS(agentText.trim().substring(0, 300), lightweightVoice);
-
-        // Handle TTS with error logging
-        ttsPromise
-          .then(audioUrl => {
-            if (audioUrl) {
-              enqueueTTS(Promise.resolve(audioUrl), agent.name);
-              console.log(`TTS generated successfully for ${agent.name}`);
-            } else {
-              addErrorLog(agent.name, 'TTS returned null URL', 'tts');
-            }
-            setLoadingState(agent.name, false);
-          })
-          .catch(error => {
-            addErrorLog(agent.name, `TTS generation failed: ${error.message}`, 'tts');
-            setLoadingState(agent.name, false);
-          });
-
-        // Don't wait for TTS, continue with next agent
-        // enqueueTTS(ttsPromise, agent.name);
-
-        setCurrentStreamingText('');
-        setActiveAgentName(null);
-        
-        console.log(`✅ Completed turn ${i + 1}/${turns.length} for ${agent.name}`);
+      // ── Check for user injection between turns ────────────────────────
+      const injection = userInjectionRef.current;
+      if (injection) {
+        userInjectionRef.current = null;
+        // Add user message to the discussion context
+        discussionHistory.push({
+          speaker: 'Commander (User)',
+          role: 'User / Discussion Initiator',
+          text: injection
+        });
       }
-      
-       console.log(`🎉 Discussion completed! Total turns: ${turns.length}`);
-    } catch (error) {
-      console.error('Discussion error:', error);
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        sender: 'System',
-        text: '⚠️ Discussion error — check the console.',
-        type: 'system-msg'
-      }]);
-    } finally {
-      if (discussionHistory.length > 0) {
-        setMemoryBoardContent(
-          discussionHistory.map(h => `**${h.speaker}** *(${h.role})*:\n${h.text}`).join('\n\n---\n\n')
-        );
 
-        // Validate that all agents participated in all rounds
-        const nonManagerAgents = agents.filter(a => !a.role.toLowerCase().includes('manager'));
-        const missingParticipation: string[] = [];
-        
-        console.log('Final participation tracking:', agentParticipation);
-        console.log('Non-manager agents:', nonManagerAgents.map(a => a.name));
-        console.log('Discussion rounds:', discussionRounds);
-        
-        nonManagerAgents.forEach(agent => {
-          const roundsParticipated = agentParticipation[agent.name] || [];
-          console.log(`Agent ${agent.name} participated in rounds:`, roundsParticipated);
-          for (let round = 1; round <= discussionRounds; round++) {
-            if (!roundsParticipated.includes(round)) {
-              missingParticipation.push(`${agent.name} missed round ${round}`);
-            }
+      const turn = turns[turnIdx];
+      const agent = turn.agent;
+
+      // Activate this agent on the UI
+      setActiveAgentName(agent.name);
+      setLoadingState(agent.name, true);
+
+      // Create a message placeholder
+      const msgId = `msg-${Date.now()}-${turnIdx}`;
+      setMessages(prev => [...prev, {
+        id: msgId,
+        sender: agent.name,
+        text: '',
+        type: 'agent-message',
+        colorHex: agent.hex
+      }]);
+
+      let fullText = '';
+      const useAudio = audioEnabledRef.current;
+      const currentTtsProvider = ttsProvider;
+
+      // ── Set up streaming TTS session (sentence-pipelined) ──
+      let ttsSession: ReturnType<typeof createStreamingTTS> | null = null;
+      
+      if (useAudio && currentTtsProvider === 'gemini-live') {
+        unlockAudio();
+        connectGeminiLive().catch(console.error);
+      } else if (useAudio) {
+        const revealMsgId = msgId;
+        const createFn = currentTtsProvider === 'supertonic' ? createSupertonicTTS : createStreamingTTS;
+        ttsSession = createFn(agent.name, {
+          signal: abortControllerRef.current?.signal,
+          voice: agent.voice,
+          onPlayStart: () => {
+            setSpeakingAgentName(agent.name);
+            setLoadingState(agent.name, false);
+          },
+          onTextProgress: (partial) => {
+            setMessages(prev => prev.map(m =>
+              m.id === revealMsgId ? { ...m, text: partial } : m
+            ));
           }
         });
+      }
 
-        if (missingParticipation.length > 0) {
-          // Log missed turns to console only — these happen when Ollama is slow/aborted,
-          // not a code bug. Showing a warning in chat is misleading to the user.
-          console.warn('Participation gaps (likely Ollama timeout/abort):', missingParticipation.join(', '));
-        } else {
-          setMessages(prev => [...prev, {
-            id: `participation-success-${Date.now()}`,
-            sender: 'System',
-            text: `✅ All agents participated in all ${discussionRounds} rounds!`,
-            type: 'system-msg'
-          }]);
-        }
+      try {
+        // Choose stream based on provider
+        const stream = agent.provider === 'cloud'
+          ? streamAgentTurnGemini(
+              { name: agent.name, role: agent.role, prompt: agent.prompt },
+              userMsg,
+              discussionHistory,
+              { isFirst: turn.isFirst, isLast: turn.isLast, round: turn.round, nextSpeaker: turn.nextSpeaker, prevSpeaker: turn.prevSpeaker },
+              abortControllerRef.current?.signal
+            )
+          : streamAgentResponse(
+              { name: agent.name, role: agent.role, prompt: agent.prompt },
+              userMsg,
+              discussionHistory,
+              { isFirst: turn.isFirst, isLast: turn.isLast, round: turn.round, nextSpeaker: turn.nextSpeaker, prevSpeaker: turn.prevSpeaker },
+              ollamaUrl,
+              agent.modelName || ollamaDefaultModel,
+              abortControllerRef.current?.signal
+            );
 
-        // Save conversation to Supabase if it contains a final plan
-        const lastMessage = discussionHistory[discussionHistory.length - 1];
-        if (lastMessage && lastMessage.text.includes('### FINAL_PLAN ###')) {
-          const planSections = lastMessage.text.split('### FINAL_PLAN ###');
-          if (planSections.length >= 2) {
-            const transcript = discussionHistory.map(h => `**${h.speaker}** *(${h.role})*:\n${h.text}`).join('\n\n---\n\n');
-            const planContent = planSections[1];
-            
-            // Parse the plan sections
-            const sections = planContent.split('\n\n').filter(s => s.trim());
-            let managerVerdict = '';
-            let userSummary = '';
-            let todoList = '';
-            let approvalGate = '';
-            let sharedMemory = '';
+        for await (const chunk of stream) {
+          if (abortControllerRef.current?.signal.aborted) break;
+          fullText += chunk;
+          setCurrentStreamingText(fullText);
 
-            sections.forEach(section => {
-              if (section.includes('MANAGER VERDICT') || section.includes('SECTION 2')) {
-                managerVerdict = section.replace(/^(SECTION 2 — MANAGER VERDICT|MANAGER VERDICT)/, '').trim();
-              } else if (section.includes('USER SUMMARY') || section.includes('SECTION 3')) {
-                userSummary = section.replace(/^(SECTION 3 — USER SUMMARY|USER SUMMARY)/, '').trim();
-              } else if (section.includes('DETAILED TODO LIST') || section.includes('SECTION 4')) {
-                todoList = section.replace(/^(SECTION 4 — DETAILED TODO LIST|DETAILED TODO LIST)/, '').trim();
-              } else if (section.includes('APPROVAL GATE') || section.includes('SECTION 5')) {
-                approvalGate = section.replace(/^(SECTION 5 — APPROVAL GATE|APPROVAL GATE)/, '').trim();
-              } else if (section.includes('SHARED MEMORY BOARD') || section.includes('SECTION 6')) {
-                sharedMemory = section.replace(/^(SECTION 6 — SHARED MEMORY BOARD|SHARED MEMORY BOARD)/, '').trim();
-              }
-            });
-
-            // Save to Supabase
-            saveConversation({
-              topic: userMsg,
-              transcript,
-              manager_verdict: managerVerdict,
-              user_summary: userSummary,
-              todo_list: todoList,
-              approval_gate: approvalGate,
-              shared_memory: memoryBoardContent,
-              agents: agents.map(a => a.name)
-            });
-
-            // Also save to local history
-            saveDiscussionToHistory({
-              topic: userMsg,
-              messages: messages,
-              agents: agents,
-              transcript,
-              manager_verdict: managerVerdict,
-              user_summary: userSummary,
-              todo_list: todoList,
-              approval_gate: approvalGate,
-              shared_memory: memoryBoardContent
-            });
+          if (ttsSession) {
+            // Feed chunk to streaming TTS — it detects sentences & fires TTS immediately
+            ttsSession.feedChunk(chunk);
+          } else {
+            // No audio — stream text to chat in real-time as before
+            setMessages(prev => prev.map(m =>
+              m.id === msgId ? { ...m, text: fullText } : m
+            ));
           }
         }
-
-        setCurrentStreamingText('');
-        setActiveAgentName(null);
-        // Keep isProcessing true until TTS queue is also empty
-        if (!ttsPlayingRef.current && ttsQueueRef.current.length === 0) {
-          setIsProcessing(false);
+      } catch (error: any) {
+        if (error.name === 'AbortError' || abortControllerRef.current?.signal.aborted) {
+          if (ttsSession) { ttsSession.abort(); }
+          break;
         }
+        addErrorLog(agent.name, error.message || String(error), 'api');
+        fullText = `[Error: ${error.message || 'Failed to generate response'}]`;
+        setMessages(prev => prev.map(m =>
+          m.id === msgId ? { ...m, text: fullText } : m
+        ));
+        if (ttsSession) { ttsSession.abort(); ttsSession = null; }
+      }
+
+      // Record in discussion history for context
+      if (fullText && !fullText.startsWith('[Error')) {
+        discussionHistory.push({
+          speaker: agent.name,
+          role: agent.role,
+          text: fullText
+        });
+        agentParticipation[agent.name]?.push(turn.round);
+      }
+
+      // ── TTS: finish & wait for audio playback to complete (cue for next turn) ──
+      if (currentTtsProvider === 'gemini-live' && fullText && !fullText.startsWith('[Error') && !abortControllerRef.current?.signal.aborted) {
+        setMessages(prev => prev.map(m =>
+          m.id === msgId ? { ...m, text: fullText } : m
+        ));
+        const textToSpeak = fullText.replace(/[*_~`]/g, '').replace(/\[([^\]]+)\]/g, '$1');
+        setSpeakingAgentName(agent.name);
+        setLoadingState(agent.name, false);
+        await speakRealtimeGemini(
+          textToSpeak,
+          agent.name,
+          agent.voice,
+          () => setLoadingState(agent.name, false),
+          () => setSpeakingAgentName(null)
+        );
+      } else if (ttsSession && fullText && !fullText.startsWith('[Error') && !abortControllerRef.current?.signal.aborted) {
+        ttsSession.finish();
+        setMessages(prev => prev.map(m =>
+          m.id === msgId ? { ...m, text: fullText } : m
+        ));
+        await ttsSession.done;
+        setSpeakingAgentName(null);
+      } else if (ttsSession) {
+        ttsSession.abort();
+        if (fullText && !fullText.startsWith('[Error')) {
+          setMessages(prev => prev.map(m =>
+            m.id === msgId ? { ...m, text: fullText } : m
+          ));
+        }
+        setSpeakingAgentName(null);
+      }
+
+      setLoadingState(agent.name, false);
+      setCurrentStreamingText('');
+    }
+
+    // ─── Finalize ─────────────────────────────────────────────────────────
+    setActiveAgentName(null);
+    setSpeakingAgentName(null);
+    setIsProcessing(false);
+    setCurrentStreamingText('');
+    userInjectionRef.current = null;
+    discussionHistoryRef.current = [];
+
+    // ── Cleanup Docker Backend Session ─────────────────────────────────────
+    if (sessionId && useDockerBackend) {
+      try {
+        await meetingBusRef.current?.disconnect();
+        await endSession(sessionId);
+        setCurrentSession(null);
+        console.log('[Docker] Session ended:', sessionId);
+      } catch (error) {
+        console.error('[Docker] Error ending session:', error);
       }
     }
+
+    // Save discussion to history
+    saveDiscussionToHistory({
+      id: currentDiscussionId || Date.now().toString(),
+      topic: userMsg,
+      messages: messages,
+      agents: agents
+    });
   };
 
-  const addErrorLog = (agent: string, error: string, type: 'tts' | 'generation' | 'api') => {
+  const addErrorLog = (agent: string, error: string, type: 'generation' | 'api') => {
     const newError = {
       timestamp: new Date().toISOString(),
       agent,
@@ -1106,103 +889,12 @@ export default function Panel() {
     setLoadingStates(prev => ({ ...prev, [agent]: loading }));
   };
 
-  // Stop all TTS playback
-  const stopAllTTS = () => {
-    if (currentAudioRef.current) {
-      currentAudioRef.current.pause();
-      currentAudioRef.current = null;
-    }
-    ttsQueueRef.current = [];
-    ttsPlayingRef.current = false;
-    if (animFrameRef.current) {
-      cancelAnimationFrame(animFrameRef.current);
-      animFrameRef.current = 0;
-    }
-    setSpeakingAgentName(null);
-  };
-
-  // Enqueue TTS audio — text is already in chat, this just drives the voice/visualizer
-  const enqueueTTS = (audioUrlPromise: Promise<string | null>, agentName: string) => {
-    ttsQueueRef.current.push({ audioUrlPromise, agentName });
-    if (!ttsPlayingRef.current) drainTTSQueue();
-  };
-
-  const drainTTSQueue = async () => {
-    if (ttsPlayingRef.current) return;
-    const next = ttsQueueRef.current.shift();
-    if (!next) {
-      // Queue empty — generation might still be running, or we're done
-      if (!isProcessing) return;
-      setIsProcessing(false);
-      return;
-    }
-
-    ttsPlayingRef.current = true;
-    setSpeakingAgentName(next.agentName);
-
-    let url: string | null = null;
-    try { url = await next.audioUrlPromise; } catch {}
-
-    const onDone = () => {
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      analyserRef.current = null;
-      document.querySelectorAll('.visualizer .bar, .inline-viz .bar').forEach(b => {
-        (b as HTMLElement).style.height = '';
-      });
-      setSpeakingAgentName(null);
-      ttsPlayingRef.current = false;
-      currentAudioRef.current = null;
-      if (url) try { URL.revokeObjectURL(url); } catch {}
-      drainTTSQueue();
-    };
-
-    if (!url || isMutedRef.current) { onDone(); return; }
-
-    const audio = new Audio(url);
-    currentAudioRef.current = audio;
-
-    // Ensure autoplay works by setting proper attributes
-    audio.preload = 'auto';
-    audio.autoplay = true;
-
-    // Wire up Web Audio visualizer
-    try {
-      if (!audioContextRef.current) audioContextRef.current = new AudioContext();
-      const ctx = audioContextRef.current;
-      if (ctx.state === 'suspended') await ctx.resume();
-      const source = ctx.createMediaElementSource(audio);
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 64;
-      source.connect(analyser);
-      analyser.connect(ctx.destination);
-      analyserRef.current = analyser;
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
-      const animate = () => {
-        if (!analyserRef.current) return;
-        analyserRef.current.getByteFrequencyData(dataArray);
-        document.querySelectorAll('.agent-card.speaking .visualizer .bar').forEach((bar, i) => {
-          const height = Math.max(3, ((dataArray[i + 2] || 0) / 255) * 30);
-          (bar as HTMLElement).style.height = `${height}px`;
-        });
-        document.querySelectorAll('.inline-viz .bar').forEach((bar, i) => {
-          const height = Math.max(3, ((dataArray[i + 2] || 0) / 255) * 18);
-          (bar as HTMLElement).style.height = `${height}px`;
-        });
-        animFrameRef.current = requestAnimationFrame(animate);
-      };
-      animFrameRef.current = requestAnimationFrame(animate);
-    } catch { /* visualizer optional */ }
-
-    audio.onended = onDone;
-    audio.onerror = onDone;
-    try { await audio.play(); } catch { onDone(); }
-  };
-
   const handleInterrupt = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    stopAllTTS();
+    stopAllAudio();
+    setSpeakingAgentName(null);
     setIsProcessing(false);
     setActiveAgentName(null);
     setCurrentStreamingText('');
@@ -1226,18 +918,18 @@ export default function Panel() {
     }]);
   };
 
-  const playTTS = async (text: string, voiceName: string = 'Kore') => {
-    const url = await generateTTS(text.substring(0, 800), voiceName);
-    if (url) {
-      const audio = new Audio(url);
-      audio.play();
-    }
+  const AGENT_INTRO_TEXTS: Record<string, string> = {
+    Nexus:  "I'm Nexus, the Manager at Eburon Tech. I orchestrate the panel and keep everyone aligned.",
+    Atlas:  "I'm Atlas, the Product Strategist at Eburon Tech. I map the path from vision to execution.",
+    Echo:   "I'm Echo, the Execution Engineer at Eburon Tech. I turn plans into working systems.",
+    Veda:   "I'm Veda, the System Architect at Eburon Tech. I design the structures that make it all scale.",
+    Nova:   "I'm Nova, the UX Specialist at Eburon Tech. I champion the people who use what we build.",
+    Cipher: "I'm Cipher, the Reality Checker at Eburon Tech. I ask the hard questions so you don't have to.",
   };
-
   const addNewAgent = () => {
     const newId = Date.now();
     const col = colorsList[agents.length % colorsList.length];
-    const newAgent = {
+    const newAgent: Agent = {
       id: newId,
       name: `Node-${agents.length + 1}`,
       role: "Standard directive.",
@@ -1249,12 +941,11 @@ export default function Panel() {
         <style>{`.agent-color-init-${agents.length} { --agent-bg: ${col.hex}; }`}</style>
       </div>,
       score: 100,
-      voice: AGENT_DEFAULT_CARTESIA_VOICES[`Node-${agents.length + 1}`] || '1ec736fa-db96-4eea-9299-235ce2cb7a0e',
-      ttsProvider: "cartesia",
       kbUrl: "",
       provider: "local",
-      modelName: ""
+      modelName: "llama3"
     };
+
     setAgents(prev => [...prev, newAgent]);
     setActiveEditIndex(agents.length);
   };
@@ -1279,27 +970,10 @@ export default function Panel() {
           <div className="logo"><Hexagon /><span>STRATEGY NEXUS</span></div>
         </div>
          <div className="header-actions">
-           <button className="btn-icon" onClick={() => setShowHistory(!showHistory)} title="Conversation History">
-             <Server size={18} />
-           </button>
-           <button className="btn-icon" onClick={() => setIsDarkMode(!isDarkMode)} title="Toggle Theme">
-             {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
-           </button>
-           <button className="btn-icon" onClick={() => setIsSidebarOpen(!isSidebarOpen)} title="Toggle Sidebar">
-             {isSidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
-           </button>
-           <button 
-             className={`btn-icon ${isMuted ? '' : 'text-blue-400 border-blue-400'}`}
-             onClick={() => {
-               const next = !isMuted;
-               setIsMuted(next);
-               isMutedRef.current = next;
-               if (next) stopAllTTS();
-             }}
-             title={isMuted ? 'Unmute TTS' : 'Mute TTS'}
-           >
-             {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-           </button>
+            <button className="btn-icon" onClick={() => setIsDarkMode(!isDarkMode)} title="Toggle Theme">
+              {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
+
            <button 
              className={`btn-icon ${memoryBoardContent ? 'text-blue-400 border-blue-400' : ''}`} 
              onClick={() => setShowMemoryBoard(!showMemoryBoard)} 
@@ -1317,64 +991,12 @@ export default function Panel() {
          </div>
       </header>
 
-      <main id="main-layout">
-        {/* Top Actions Bar (below header) */}
-        <div id="top-actions-bar">
-          <button className="new-session-label-btn" onClick={createNewDiscussion} title="New Conversation">
-            <Plus size={16} />
-            <span>Create New Session</span>
+      <main id="main-layout" className="flex">
+        {/* Sidebar Expand Button */}
+        {!isSidebarOpen && (
+          <button id="sidebar-expand-btn" onClick={() => setIsSidebarOpen(true)} title="Expand sidebar">
+            <ChevronRight size={16} />
           </button>
-        </div>
-
-        {/* Conversation History Panel */}
-        {showHistory && (
-          <div id="history-panel">
-            <div className="history-header">
-              <h3>💬 Conversation History</h3>
-              <button className="btn-icon" onClick={() => setShowHistory(false)} title="Close History">
-                <X size={16} />
-              </button>
-            </div>
-            
-            <div className="history-list">
-              {savedDiscussions.map((discussion) => (
-                <div 
-                  key={discussion.id}
-                  className={`history-item ${currentDiscussionId === discussion.id ? 'active' : ''}`}
-                  onClick={() => loadDiscussion(discussion)}
-                >
-                  <div className="history-title">
-                    {discussion.title}
-                  </div>
-                  <div className="history-meta">
-                    {new Date(discussion.timestamp).toLocaleDateString()} • {discussion.messageCount} messages
-                  </div>
-                  <div className="history-preview">
-                    {discussion.preview}
-                  </div>
-                  <button 
-                    className="delete-history-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (confirm(`Delete discussion "${discussion.title}"?`)) {
-                        deleteDiscussion(discussion.id);
-                      }
-                    }}
-                    title="Delete Discussion"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              ))}
-              
-              {savedDiscussions.length === 0 && (
-                <div className="no-history">
-                  <p>No conversation history yet</p>
-                  <p>Start a discussion to see it here</p>
-                </div>
-              )}
-            </div>
-          </div>
         )}
 
         {/* Error Logs Panel */}
@@ -1414,8 +1036,61 @@ export default function Panel() {
           </div>
         )}
 
-        <div id="left-sidebar" className={!isSidebarOpen ? 'collapsed' : ''}>
-          <div id="chat-window" ref={chatWindowRef}>
+        <aside id="sidebar" className={`glass-sidebar ${!isSidebarOpen ? 'collapsed' : ''}`}>
+          {/* Sidebar Header */}
+          <div className="sidebar-header">
+            <button className="sidebar-header-btn" onClick={() => setShowSettings(true)} title="Settings">
+              <SlidersHorizontal size={16} />
+            </button>
+            <span className="sidebar-label">NEURAL HUB</span>
+            <button className="sidebar-header-btn" onClick={() => setIsSidebarOpen(false)} title="Collapse sidebar">
+              <ChevronLeft size={16} />
+            </button>
+          </div>
+
+          {/* Scrollable Content: History + Chat */}
+          <div className="sidebar-scroll" ref={chatWindowRef}>
+            {/* New Session Item */}
+            <div className="sidebar-op-item" onClick={createNewDiscussion}>
+              <p className="sidebar-op-title">New Operation</p>
+              <p className="sidebar-op-sub">Awaiting voice command...</p>
+            </div>
+
+            {/* Saved Discussions */}
+            {savedDiscussions.map((discussion) => (
+              <div 
+                key={discussion.id}
+                className={`sidebar-op-item ${currentDiscussionId === discussion.id ? 'current' : ''}`}
+                onClick={() => loadDiscussion(discussion)}
+              >
+                <div className="sidebar-op-row">
+                  <p className="sidebar-op-title">{discussion.title}</p>
+                  <button 
+                    className="sidebar-op-delete"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (confirm(`Delete "${discussion.title}"?`)) {
+                        deleteDiscussion(discussion.id);
+                      }
+                    }}
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+                <p className="sidebar-op-sub">
+                  {new Date(discussion.timestamp).toLocaleDateString()} · {discussion.messageCount} msgs
+                </p>
+              </div>
+            ))}
+
+            {savedDiscussions.length === 0 && (
+              <div className="sidebar-empty-state">
+                <p>No history yet</p>
+                <p>Start a discussion to see it here</p>
+              </div>
+            )}
+
+            {/* Chat Messages */}
             {messages.map((msg) => (
               <div key={msg.id} className={msg.type === 'system-msg' ? 'system-msg' : `message ${msg.type}`}>
                 {msg.type === 'agent-message' && (
@@ -1430,22 +1105,7 @@ export default function Panel() {
                           <div className="loading-dot"></div>
                         </div>
                       )}
-                      {speakingAgentName === msg.sender && messages[messages.length - 1]?.id === msg.id && (
-                        <span className="inline-viz">
-                          <span className="bar"></span><span className="bar"></span><span className="bar"></span><span className="bar"></span><span className="bar"></span>
-                        </span>
-                      )}
                     </div>
-                    <button 
-                      onClick={() => {
-                        const agent = agents.find(a => a.name === msg.sender);
-                        playTTS(msg.text, agent?.voice || 'Kore');
-                      }} 
-                      className="text-gray-400 hover:text-white transition-colors ml-auto"
-                      title="Read Aloud"
-                    >
-                      <Volume2 size={14} />
-                    </button>
                   </div>
                 )}
                 {msg.type === 'user-message' && (
@@ -1458,9 +1118,6 @@ export default function Panel() {
                   <div className="markdown-body text-left w-full">
                     <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
                       <h3 className="text-xl font-bold m-0">Final Project Plan</h3>
-                      <button onClick={() => playTTS(msg.text, agents[0]?.voice || 'Zephyr')} className="p-2 bg-blue-600 hover:bg-blue-500 rounded-full text-white transition-colors" title="Read Aloud">
-                        <Volume2 size={16} />
-                      </button>
                     </div>
                     <ReactMarkdown>{msg.text}</ReactMarkdown>
                     {!isProcessing && messages[messages.length - 1].id === msg.id && (
@@ -1485,47 +1142,102 @@ export default function Panel() {
             <div ref={chatEndRef} />
           </div>
 
-          <div id="controls-wrapper">
-            <div className="controls-top">
-              <button className={`interrupt-btn ${isProcessing ? 'enabled' : ''}`} onClick={handleInterrupt} title="Interrupt Agents" disabled={!isProcessing}>
-                <AudioLines size={18} />
-                <span>HALT</span>
+          {/* Bottom Controls */}
+          <div className="sidebar-bottom">
+            {/* Live Transcript Preview (visible during voice mode) */}
+            {isVoiceMode && (
+              <div className="voice-transcript-preview">
+                <div className="voice-transcript-text">
+                  {finalTranscript}{liveTranscript ? (finalTranscript ? ' ' : '') + liveTranscript : ''}
+                  {!finalTranscript && !liveTranscript && <span className="voice-listening">Listening...</span>}
+                </div>
+              </div>
+            )}
+
+            <div className="sidebar-controls-row">
+              <button 
+                className="sidebar-ctrl-btn"
+                onClick={() => setShowHistoryPanel(!showHistoryPanel)}
+                title="Conversation History"
+              >
+                <Clock size={14} />
+                <span>History</span>
               </button>
-              
-              <div className="flex items-center gap-2 ml-auto">
-                <button
-                  className={`mic-btn ${isRecording ? 'recording' : ''}`}
-                  onClick={toggleMic}
-                  title={isRecording ? 'Stop Recording' : 'Voice to Text'}
+              <button 
+                className={`sidebar-ctrl-btn voice-btn ${isVoiceMode ? 'active-ctrl recording' : ''}`}
+                onClick={toggleVoiceMode}
+                title={isVoiceMode ? 'Stop & Send' : 'Voice Input'}
+              >
+                {isVoiceMode ? <MicOff size={14} /> : <Mic size={14} />}
+                {isVoiceMode && micLevels && (
+                  <span className="mic-viz">
+                    {[0, 1, 2, 3, 4].map(i => {
+                      const idx = Math.floor((micLevels.length / 5) * i);
+                      const h = Math.max(3, Math.round((micLevels[idx] / 255) * 14));
+                      return <span key={i} className="mic-viz-bar" style={{ height: `${h}px` }} />;
+                    })}
+                  </span>
+                )}
+                <span>{isVoiceMode ? 'Stop' : 'Voice'}</span>
+              </button>
+              <button 
+                className={`sidebar-ctrl-btn ${audioEnabled ? 'active-ctrl' : ''}`}
+                onClick={() => setAudioEnabled(!audioEnabled)}
+              >
+                <AudioLines size={14} />
+                <span>Audio</span>
+              </button>
+              {audioEnabled && (
+                <select 
+                  className="sidebar-ctrl-select"
+                  value={ttsProvider}
+                  onChange={(e) => setTtsProvider(e.target.value as 'deepgram' | 'supertonic' | 'gemini-live')}
+                  title="TTS Provider"
                 >
-                  {isRecording ? (
-                    <canvas
-                      ref={micCanvasRef}
-                      className="mic-canvas"
-                      width={28}
-                      height={28}
-                    />
-                  ) : (
-                    <Mic size={20} />
-                  )}
-                </button>
-                <button className="send-btn" onClick={() => handleSend()} title="Send Prompt" disabled={isProcessing || !input.trim()}>
-                  <Send size={20} />
+                  <option value="deepgram">Deepgram</option>
+                  <option value="supertonic">Supertonic</option>
+                  <option value="gemini-live">Live</option>
+                </select>
+              )}
+            </div>
+
+            {/* Stop / Interrupt bar — only visible when agents are processing */}
+            {isProcessing && (
+              <button className="sidebar-halt-bar" onClick={handleInterrupt} title="Interrupt Agents">
+                <X size={12} /> Stop Discussion
+              </button>
+            )}
+
+            <div className="sidebar-input-box">
+              <textarea
+                rows={1}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+                placeholder={isProcessing ? 'Inject a message into the discussion...' : 'Type a message...'}
+              />
+              <div className="sidebar-input-footer">
+                <div className="sidebar-input-icons">
+                  <Plus size={14} className="sidebar-input-icon" />
+                  <Paperclip size={14} className="sidebar-input-icon" />
+                </div>
+                <button 
+                  className="sidebar-send-btn" 
+                  onClick={() => handleSend()} 
+                  disabled={!input.trim()}
+                  title="Send"
+                >
+                  <ArrowUp size={14} />
                 </button>
               </div>
             </div>
-            <div className="input-group-full">
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                placeholder={isProcessing ? 'Inject parameter or halt process...' : 'Enter directive...'}
-                disabled={isProcessing}
-              />
-            </div>
           </div>
-        </div>
+        </aside>
 
         <div id="agent-grid">
           {agents.length === 0 ? (
@@ -1535,11 +1247,35 @@ export default function Panel() {
           ) : agents.map((a, i) => {
             const isActive = activeAgentName === a.name;
             const isSpeaking = speakingAgentName === a.name;
+            
             return (
-              <div key={a.id} className={`agent-card agent-dynamic-${a.id} ${isActive || isSpeaking ? 'active' : ''} ${isSpeaking ? 'speaking' : ''}`}>
+              <div key={a.id} className={`agent-card agent-dynamic-${a.id} ${isActive ? 'active' : ''} ${isSpeaking ? 'speaking' : ''}`}>
                 <style>{`.agent-dynamic-${a.id} { --agent-color-rgb: ${a.rgba}; --agent-hex: ${a.hex}; --agent-bg: ${a.hex}; }`}</style>
                 <button className="star-btn" onClick={() => rewardAgent(i)} title="Reward Idea">
                   <Star size={16} fill="currentColor" />
+                </button>
+                <button 
+                  className="star-btn" 
+                  style={{ right: '30px' }}
+                  onClick={async () => {
+                    try {
+                      const testText = `Hello! This is ${a.name} testing audio playback.`;
+                      setSpeakingAgentName(a.name);
+                      await speakRealtimeGemini(
+                        testText,
+                        a.name,
+                        a.voice,
+                        () => {},
+                        () => setSpeakingAgentName(null)
+                      );
+                    } catch (e) {
+                      console.error('TTS Error:', e);
+                      setSpeakingAgentName(null);
+                    }
+                  }} 
+                  title="Test TTS Audio"
+                >
+                  <Volume2 size={16} />
                 </button>
                 <div className="card-top">
                   {typeof a.img === 'string' ? (
@@ -1547,28 +1283,83 @@ export default function Panel() {
                   ) : (
                     <div className="agent-avatar">{a.img}</div>
                   )}
+                  {/* Audio visualiser ring (synced to TTS AnalyserNode) */}
+                  {isSpeaking && (
+                    <div className="agent-audio-viz">
+                      {ttsBarHeights.map((h, bi) => (
+                        <span key={bi} className="agent-audio-bar" style={{ height: `${h}px` }} />
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <div className="card-bottom">
-                  <div className="agent-name">
-                    {a.name}
-                    <div className="visualizer">
-                      <div className="bar"></div><div className="bar"></div><div className="bar"></div><div className="bar"></div><div className="bar"></div>
+                  <div className="card-bottom">
+                       <div className="agent-name">
+                         <div className="agent-name-content">
+                           <span>{a.name}</span>
+                         </div>
+                       </div>
+                    <div className="agent-status">{isSpeaking ? 'Speaking...' : isActive && audioEnabled ? 'Thinking...' : isActive ? 'Generating...' : 'Standby'}</div>
+                    <div className="agent-model-label">
+                      {a.provider === 'local' ? `🖥 ${a.modelName || ollamaDefaultModel}` : `☁ Gemini`}
+                    </div>
+                    <div className="power-row">
+                      <span className="pwr-left">PWR: {a.score}</span>
+                      <span className="pwr-right">PWR: {a.score}</span>
                     </div>
                   </div>
-                  <div className="agent-status">{isSpeaking ? '🎙 Speaking...' : isActive ? '⟳ Generating...' : 'Standby'}</div>
-                  <div className="agent-model-label">
-                    {a.provider === 'local' ? `🖥 ${a.modelName || ollamaDefaultModel}` : `☁ Gemini`}
-                  </div>
-                  <div className="power-row">
-                    <span className="pwr-left">PWR: {a.score}</span>
-                    <span className="pwr-right">PWR: {a.score}</span>
-                  </div>
-                </div>
               </div>
             );
           })}
         </div>
       </main>
+
+      {/* ─── History Panel ─────────────────────────────────────────────── */}
+      {showHistoryPanel && (
+        <div id="settings-modal" className="modal-open">
+          <div className="modal-content modal-content-col">
+            <div className="settings-header">
+              <div>
+                <h2>Conversation History</h2>
+                <p>{savedDiscussions.length} saved discussion{savedDiscussions.length !== 1 ? 's' : ''}</p>
+              </div>
+              <button onClick={() => setShowHistoryPanel(false)} className="btn-icon" title="Close History" aria-label="Close History"><X /></button>
+            </div>
+            <div className="settings-body history-list">
+              {savedDiscussions.length === 0 ? (
+                <div className="memory-empty">
+                  <Clock size={48} className="memory-empty-icon" />
+                  <p>No conversations yet</p>
+                  <p className="memory-empty-hint">Start a discussion and it will appear here.</p>
+                </div>
+              ) : (
+                savedDiscussions.map((d) => (
+                  <div
+                    key={d.id}
+                    className={`history-item ${currentDiscussionId === d.id ? 'current' : ''}`}
+                    onClick={() => { loadDiscussion(d); setShowHistoryPanel(false); }}
+                  >
+                    <div className="history-item-row">
+                      <span className="history-item-title">{d.title}</span>
+                      <button
+                        className="history-item-delete"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(`Delete "${d.title}"?`)) deleteDiscussion(d.id);
+                        }}
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                    <span className="history-item-meta">
+                      {new Date(d.timestamp).toLocaleDateString()} · {d.messageCount} msgs
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {showMemoryBoard && (
         <div id="settings-modal" className="modal-open">
@@ -1661,7 +1452,6 @@ export default function Panel() {
                     </div>
 
                     <div className="form-group full">
-                      <label>Connection Status</label>
                       <div className="row-flex-center">
                         <div className={`status-dot ${ollamaStatus}`}></div>
                         <span className="status-text">
@@ -1726,213 +1516,120 @@ export default function Panel() {
                     </div>
                   </div>
 
-                  <div className="section-divider">
-                    <h3 className="section-heading">🔊 Qwen3-TTS (Local Voice)</h3>
-                  </div>
-
+                  {/* Docker Backend Section */}
                   <div className="form-group full">
-                    <label>Qwen3-TTS Server URL</label>
-                    <div className="row-flex">
-                      <input type="text" className="custom-input input-flex" value={qwenTtsUrl} onChange={(e) => setQwenTtsUrl(e.target.value)} placeholder="http://localhost:7861" />
+                    <label>Docker Backend (Multi-Agent System)</label>
+                    <div className="row-flex-center" style={{ marginTop: '8px' }}>
                       <button
-                        className="custom-input btn-action"
-                        onClick={async () => {
-                          setQwenTtsStatus('unknown');
-                          try {
-                            const res = await fetch(`${qwenTtsUrl}/health`, { signal: AbortSignal.timeout(3000) });
-                            const data = await res.json();
-                            setQwenTtsStatus(data.status === 'ok' ? 'connected' : 'disconnected');
-                          } catch { setQwenTtsStatus('disconnected'); }
+                        className={`toggle-btn ${useDockerBackend ? 'active' : ''}`}
+                        onClick={() => setUseDockerBackend(!useDockerBackend)}
+                        disabled={dockerStatus === 'disconnected'}
+                        style={{
+                          padding: '8px 16px',
+                          borderRadius: '6px',
+                          border: 'none',
+                          cursor: dockerStatus === 'disconnected' ? 'not-allowed' : 'pointer',
+                          background: useDockerBackend ? '#10b981' : '#374151',
+                          color: 'white',
+                          fontWeight: 500,
+                          opacity: dockerStatus === 'disconnected' ? 0.5 : 1
                         }}
                       >
-                        Test
+                        {useDockerBackend ? '✓ Enabled' : '○ Disabled'}
                       </button>
-                    </div>
-                  </div>
-
-                  <div className="form-group full">
-                    <label>Connection Status</label>
-                    <div className="row-flex-center">
-                      <div className={`status-dot ${qwenTtsStatus}`}></div>
-                      <span className="status-text">
-                        {qwenTtsStatus === 'connected' ? '✅ Connected — Qwen3-TTS-0.6B ready (Default)' : qwenTtsStatus === 'unknown' ? '⚠️ Not tested — click Test (Default TTS)' : '❌ Not connected — start with: python qwen_server_simple.py (Default)'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="form-group full">
-                    <label>Prebuilt Voices</label>
-                    <div className="row-flex-wrap">
-                      {QWEN_VOICES.map(v => (
-                        <span key={v.id} className="badge-pill">
-                          <strong>{v.name}</strong> — {v.desc}
+                      <div className="row-flex-center" style={{ marginLeft: '12px' }}>
+                        {dockerStatus === 'connected' ? <Wifi size={16} color="#10b981" /> : dockerStatus === 'checking' ? <Wifi size={16} color="#eab308" /> : <WifiOff size={16} color="#ef4444" />}
+                        <span className="status-text" style={{ marginLeft: '6px', fontSize: '12px' }}>
+                          {dockerStatus === 'connected' ? 'Orchestrator & Meeting-Bus connected' : dockerStatus === 'checking' ? 'Checking...' : 'Not available'}
                         </span>
+                      </div>
+                    </div>
+                    <div className="info-box-sm" style={{ marginTop: '8px' }}>
+                      <p>Use the Docker multi-agent system for distributed AI agents. When enabled, sessions are managed by the orchestrator and agents communicate via the meeting-bus.</p>
+                    </div>
+                    {currentSession && (
+                      <div style={{ marginTop: '8px', padding: '8px', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '4px' }}>
+                        <span style={{ fontSize: '12px', color: '#10b981' }}>Active Session: {currentSession.session_id.slice(0, 8)}...</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* TTS Settings */}
+                  <div className="form-group full" style={{ marginTop: '24px' }}>
+                    <label>Text-to-Speech (TTS)</label>
+                    
+                    <div style={{ marginTop: '12px' }}>
+                      <label style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '6px', display: 'block' }}>TTS Provider</label>
+                      <select 
+                        className="custom-input" 
+                        value={ttsProvider}
+                        onChange={(e) => setTtsProvider(e.target.value as 'deepgram' | 'supertonic' | 'gemini-live')}
+                        style={{ width: '100%' }}
+                      >
+                        <option value="deepgram">Deepgram (High quality, cloud)</option>
+                        <option value="supertonic">Supertonic (On-device, fast)</option>
+                        <option value="gemini-live">Gemini Live (Realtime, ultra-low latency)</option>
+                      </select>
+                    </div>
+
+                    <div className="info-box-sm" style={{ marginTop: '8px' }}>
+                      <p>
+                        <strong>Deepgram</strong> - High quality cloud TTS with sentence streaming<br />
+                        <strong>Supertonic</strong> - On-device CPU TTS, no API costs<br />
+                        <strong>Gemini Live</strong> - Ultra-low latency via WebSocket, requires Gemini API
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Voice Settings */}
+                  <div className="form-group full" style={{ marginTop: '16px' }}>
+                    <label>Agent Voices</label>
+                    <div className="form-grid" style={{ marginTop: '8px', gap: '8px' }}>
+                      {agents.map((agent) => (
+                        <div key={agent.id} className="form-group" style={{ margin: 0 }}>
+                          <label style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{agent.name}</label>
+                          <select 
+                            className="custom-input" 
+                            value={agent.voice || ''}
+                            onChange={(e) => {
+                              const updated = [...agents];
+                              updated[agents.findIndex(a => a.id === agent.id)] = { ...agent, voice: e.target.value };
+                              setAgents(updated);
+                            }}
+                            style={{ width: '100%', fontSize: '12px' }}
+                          >
+                            {ttsProvider === 'gemini-live' ? (
+                              <>
+                                <option value="">Default</option>
+                                <option value="Charon">Charon (Male, deep)</option>
+                                <option value="Orion">Orion (Male, warm)</option>
+                                <option value="Puck">Puck (Male, casual)</option>
+                                <option value="Orus">Orus (Male, strong)</option>
+                                <option value="Aoede">Aoede (Female, bright)</option>
+                                <option value="Luna">Luna (Female, soft)</option>
+                                <option value="Fenrir">Fenrir (Female, firm)</option>
+                              </>
+                            ) : (
+                              <>
+                                <option value="">Default</option>
+                                <option value="F1">F1 (Female)</option>
+                                <option value="F2">F2 (Female)</option>
+                                <option value="M1">M1 (Male)</option>
+                                <option value="M2">M2 (Male)</option>
+                              </>
+                            )}
+                          </select>
+                        </div>
                       ))}
                     </div>
-                  </div>
-
-                  <div className="form-group full info-box">
-                    <div className="info-box-content">
-                      <p className="info-box-p">
-                        <strong>Default:</strong> All agents use Qwen3 TTS by default for local voice synthesis. You can change to Cartesia or Gemini voices in any agent's Voice Profile dropdown. The TTS provider is auto-detected from the voice selection.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="section-divider">
-                    <h3 className="section-heading">🎙️ Cartesia AI (Cloud Voice)</h3>
-                  </div>
-
-                  <div className="form-group full">
-                    <label>Cartesia API Key</label>
-                    <div className="row-flex">
-                      <input
-                        type="password"
-                        className="custom-input input-flex"
-                        value={cartesiaApiKey}
-                        onChange={(e) => {
-                          setCartesiaApiKey(e.target.value);
-                          cartesiaApiKeyRef.current = e.target.value;
-                          setCartesiaStatus('unknown');
-                        }}
-                        placeholder="sk_car_..."
-                      />
-                      <button
-                        className="custom-input btn-action"
-                        onClick={async () => {
-                          setCartesiaStatus('unknown');
-                          const ok = await checkCartesiaKey(cartesiaApiKey);
-                          setCartesiaStatus(ok ? 'connected' : 'disconnected');
-                        }}
-                      >
-                        Test
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="form-group full">
-                    <label>Connection Status</label>
-                    <div className="row-flex-center">
-                      <div className={`status-dot ${cartesiaStatus}`}></div>
-                      <span className="status-text">
-                        {cartesiaStatus === 'connected' ? 'Connected — Cartesia Sonic-3 ready' : cartesiaStatus === 'unknown' ? 'Not tested — click Test' : 'Invalid API key or network error'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="form-group full info-box">
-                    <div className="info-box-content">
-                      <p className="info-box-p">
-                        <strong>100 voices available.</strong> Select any Cartesia voice in an agent's Voice Profile dropdown. Voices are grouped by language and gender. Default agents use pre-assigned unique Cartesia voices.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="section-divider">
-                    <h3 className="section-heading">☁️ Gemini TTS (Google Cloud)</h3>
-                  </div>
-
-                  <div className="form-group full">
-                    <label>Gemini API Key</label>
-                    <div className="row-flex">
-                      <input type="password" className="custom-input input-flex" value={process.env.GEMINI_API_KEY || ''} disabled placeholder="Set GEMINI_API_KEY in .env file" />
-                      <button
-                        className="custom-input btn-action"
-                        onClick={async () => {
-                          setGeminiTtsStatus('unknown');
-                          try {
-                            const isValid = await checkGeminiKey();
-                            setGeminiTtsStatus(isValid ? 'connected' : 'disconnected');
-                          } catch { setGeminiTtsStatus('disconnected'); }
-                        }}
-                      >
-                        Test
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="form-group full">
-                    <label>Connection Status</label>
-                    <div className="row-flex-center">
-                      <div className={`status-dot ${geminiTtsStatus}`}></div>
-                      <span className="status-text">
-                        {geminiTtsStatus === 'connected' ? '✅ Connected — Gemini TTS ready' : geminiTtsStatus === 'unknown' ? '⚠️ Not tested — click Test' : '❌ Invalid API key or network error'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="form-group full info-box">
-                    <div className="info-box-content">
-                      <p className="info-box-p">
-                        <strong>7 voices available.</strong> Google Gemini TTS with high-quality voice synthesis. Uses your Gemini API key for cloud-based text-to-speech.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="section-divider">
-                    <h3 className="section-heading">🎤 TADA TTS (Local — Hume AI)</h3>
-                  </div>
-
-                  <div className="form-group full">
-                    <label>TADA Server URL</label>
-                    <div className="row-flex">
-                      <input
-                        type="text"
-                        className="custom-input input-flex"
-                        value={tadaTtsUrl}
-                        onChange={(e) => { setTadaTtsUrl(e.target.value); setTadaTtsStatus('unknown'); }}
-                        placeholder="http://localhost:7862"
-                      />
-                      <button
-                        className="custom-input btn-action"
-                        onClick={async () => {
-                          setTadaTtsStatus('unknown');
-                          const ok = await checkTadaHealth(tadaTtsUrl);
-                          setTadaTtsStatus(ok ? 'connected' : 'disconnected');
-                        }}
-                      >
-                        Test
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="form-group full">
-                    <label>Connection Status</label>
-                    <div className="row-flex-center">
-                      <div className={`status-dot ${tadaTtsStatus}`}></div>
-                      <span className="status-text">
-                        {tadaTtsStatus === 'connected' ? '✅ Connected — TADA TTS ready' : tadaTtsStatus === 'unknown' ? '⚠️ Not tested — click Test' : '❌ Not connected — start with: python tada_server.py'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="form-group full">
-                    <label>Available Voices</label>
-                    <div className="row-flex-wrap">
-                      {TADA_VOICES.map(v => (
-                        <span key={v.id} className="badge-pill">
-                          <strong>{v.name}</strong> — {v.desc}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="form-group full info-box">
-                    <div className="info-box-content">
-                      <p className="info-box-p">
-                        <strong>Hume AI TADA-1B</strong> — Local zero-shot voice cloning using Meta Llama 3.2. Each voice uses a reference WAV file in <code>tada_voices/</code>. Requires GPU for best performance. Start with: <code>python tada_server.py</code>
-                      </p>
+                    <div className="info-box-sm" style={{ marginTop: '8px' }}>
+                      <p>Assign unique voices to each agent for more immersive panel discussions.</p>
                     </div>
                   </div>
                 </>
-              ) : agents.length === 0 ? (
-                <div className="no-agents-state">
-                  <UserX size={48} className="memory-empty-icon" />
-                  <h2 className="no-agents-heading">No Agents Online</h2>
-                  <p className="no-agents-hint">Deploy a new unit to resume strategy simulation.</p>
-                  <button onClick={() => setShowSettings(false)} className="custom-input btn-close-window">Close Window</button>
-                </div>
               ) : activeEditIndex === -1 ? (
+
+
                 <div className="form-grid">
                   <div className="form-group full">
                     <label>Master System Prompt</label>
@@ -1967,51 +1664,7 @@ export default function Panel() {
                       }} />
                     </div>
 
-                    <div className="form-group">
-                      <label>Voice Profile</label>
-                      <select className="custom-input" title="Voice Profile" aria-label="Voice Profile" value={agents[activeEditIndex].voice} onChange={(e) => {
-                        const newAgents = [...agents];
-                        const selectedVoice = e.target.value;
-                        newAgents[activeEditIndex].voice = selectedVoice;
-                        if (QWEN_VOICES.some(v => v.id === selectedVoice)) {
-                          newAgents[activeEditIndex].ttsProvider = 'qwen';
-                        } else if (CARTESIA_VOICES.some(v => v.id === selectedVoice)) {
-                          newAgents[activeEditIndex].ttsProvider = 'cartesia';
-                        } else if (GEMINI_TTS_VOICES.includes(selectedVoice)) {
-                          newAgents[activeEditIndex].ttsProvider = 'gemini';
-                        } else if (TADA_VOICES.some(v => v.id === selectedVoice)) {
-                          newAgents[activeEditIndex].ttsProvider = 'tada';
-                        } else {
-                          newAgents[activeEditIndex].ttsProvider = 'gemini';
-                        }
-                        setAgents(newAgents);
-                      }}>
-                        <optgroup label="☁️ Gemini TTS">
-                          {GEMINI_TTS_VOICES.map(v => <option key={v} value={v}>{v}</option>)}
-                        </optgroup>
-                        <optgroup label="🖥️ Qwen3 TTS (Local)">
-                          {QWEN_VOICES.map(v => <option key={v.id} value={v.id}>{v.name} — {v.desc}</option>)}
-                        </optgroup>
-                        <optgroup label="🎙️ Cartesia AI — English (Masculine)">
-                          {CARTESIA_VOICES.filter(v => v.language === 'en' && v.gender === 'masculine').map(v => (
-                            <option key={v.id} value={v.id}>{v.name}</option>
-                          ))}
-                        </optgroup>
-                        <optgroup label="🎙️ Cartesia AI — English (Feminine)">
-                          {CARTESIA_VOICES.filter(v => v.language === 'en' && v.gender === 'feminine').map(v => (
-                            <option key={v.id} value={v.id}>{v.name}</option>
-                          ))}
-                        </optgroup>
-                        <optgroup label="🌐 Cartesia AI — Multilingual">
-                          {CARTESIA_VOICES.filter(v => v.language !== 'en').map(v => (
-                            <option key={v.id} value={v.id}>{v.name} ({v.language})</option>
-                          ))}
-                        </optgroup>
-                        <optgroup label="🎤 TADA TTS (Local — Hume AI)">
-                          {TADA_VOICES.map(v => <option key={v.id} value={v.id}>{v.name} — {v.desc}</option>)}
-                        </optgroup>
-                      </select>
-                    </div>
+
 
                     <div className="form-group">
                       <label>Color Hex</label>
@@ -2027,10 +1680,11 @@ export default function Panel() {
                       <label>Model Provider</label>
                       <select className="custom-input" title="Model Provider" aria-label="Model Provider" value={agents[activeEditIndex].provider} onChange={(e) => {
                         const newAgents = [...agents];
-                        newAgents[activeEditIndex].provider = e.target.value;
+                        newAgents[activeEditIndex].provider = e.target.value as 'local' | 'cloud';
                         newAgents[activeEditIndex].modelName = '';
                         setAgents(newAgents);
                       }}>
+
                         <option value="local">🖥️ Local (Ollama)</option>
                         <option value="cloud">☁️ Cloud (Gemini)</option>
                       </select>
