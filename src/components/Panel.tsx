@@ -748,44 +748,48 @@ export default function Panel() {
         console.log(`=== Turn ${i + 1}/${turnOrder.length}: ${agent.name} ===`);
         
         // Calculate which round this is for specialists
+        // Fixed calculation: account for manager at start (i=0)
         const specialistIndex = specialists.findIndex(s => s.name === agent.name);
-        const currentRound = specialistIndex >= 0 ? 
+        const currentRound = specialistIndex >= 0 && !isManager ? 
           Math.floor((i - 1) / specialists.length) + 1 : 
           0;
+        
+        // Ensure we never exceed planned rounds due to index errors
+        const clampedRound = Math.min(currentRound, discussionRounds);
         
         // Debug logging
         console.log(`Agent ${agent.name} - Index: ${i}, Specialist Index: ${specialistIndex}, Round: ${currentRound}, Is Manager: ${isManager}`);
         
-        // Track participation immediately when agent starts speaking
-        if (!isManager && currentRound >= 1) {
+        // Track participation using clamped round
+        if (!isManager && clampedRound >= 1) {
           if (!agentParticipation[agent.name]) {
             agentParticipation[agent.name] = [];
           }
-          if (!agentParticipation[agent.name].includes(currentRound)) {
-            agentParticipation[agent.name].push(currentRound);
-            console.log(`✅ Tracking participation: ${agent.name} in round ${currentRound}`);
+          if (!agentParticipation[agent.name].includes(clampedRound)) {
+            agentParticipation[agent.name].push(clampedRound);
+            console.log(`✅ Tracking participation: ${agent.name} in round ${clampedRound}`);
           } else {
-            console.log(`⚠️ Already tracked: ${agent.name} in round ${currentRound}`);
+            console.log(`⚠️ Already tracked: ${agent.name} in round ${clampedRound}`);
           }
         }
         
         // Add round indicator for non-manager agents
-        if (!isManager && currentRound > 0) {
+        if (!isManager && clampedRound > 0) {
           setMessages(prev => [...prev, {
-            id: `round-${currentRound}-${Date.now()}`,
+            id: `round-${clampedRound}-${Date.now()}`,
             sender: 'System',
-            text: `🔄 Round ${currentRound} of ${discussionRounds} - ${agent.name} (${agent.role})`,
+            text: `🔄 Round ${clampedRound} of ${discussionRounds} - ${agent.name} (${agent.role})`,
             type: 'system-msg'
           }]);
         }
         
-        // Add manager contemplation between rounds
-        if (!isManager && currentRound > 1 && specialistIndex === specialists.length - 1) {
+        // Add manager contemplation between rounds (after last specialist of each round)
+        if (!isManager && clampedRound > 1 && specialistIndex === specialists.length - 1) {
           // This is the last specialist in the round, add manager contemplation
           setMessages(prev => [...prev, {
-            id: `manager-contemplation-${currentRound}-${Date.now()}`,
+            id: `manager-contemplation-${clampedRound}-${Date.now()}`,
             sender: 'Nexus',
-            text: `*leans back and strokes chin thoughtfully* Hmm, interesting points from everyone this round. Let me process this... *pauses* Okay, I'm seeing some patterns emerge here. *nods slowly* Let's move to the next round and dig deeper into these insights.`,
+            text: `*leans back and strokes chin thoughtfully* Hmm, interesting points from everyone in round ${clampedRound}. Let me process this... *pauses* Okay, I'm seeing some patterns emerge here. *nods slowly* Let's move to the next round and dig deeper into these insights.`,
             type: 'agent-message',
             colorHex: agents.find(a => a.role.toLowerCase().includes('manager'))?.hex
           }]);
@@ -850,15 +854,15 @@ export default function Panel() {
           ));
           
           // Still track participation even if they failed, since they attempted to speak
-          if (!isManager && currentRound >= 1) {
+          if (!isManager && clampedRound >= 1) {
             if (!agentParticipation[agent.name]) {
               agentParticipation[agent.name] = [];
             }
-            if (!agentParticipation[agent.name].includes(currentRound)) {
-              agentParticipation[agent.name].push(currentRound);
-              console.log(`🔄 Tracking participation (attempt): ${agent.name} in round ${currentRound}`);
+            if (!agentParticipation[agent.name].includes(clampedRound)) {
+              agentParticipation[agent.name].push(clampedRound);
+              console.log(`🔄 Tracking participation (attempt): ${agent.name} in round ${clampedRound}`);
             } else {
-              console.log(`⚠️ Already tracked (attempt): ${agent.name} in round ${currentRound}`);
+              console.log(`⚠️ Already tracked (attempt): ${agent.name} in round ${clampedRound}`);
             }
           }
           
