@@ -422,6 +422,8 @@ export default function Panel() {
   const [cartesiaStatus, setCartesiaStatus] = useState<'unknown' | 'connected' | 'disconnected'>('unknown');
   const [geminiTtsStatus, setGeminiTtsStatus] = useState<'unknown' | 'connected' | 'disconnected'>('unknown');
   const [vibevoiceTtsStatus, setVibevoiceTtsStatus] = useState<'unknown' | 'connected' | 'disconnected'>('unknown');
+  const [tadaTtsUrl, setTadaTtsUrl] = useState('http://localhost:7862');
+  const [tadaTtsStatus, setTadaTtsStatus] = useState<'unknown' | 'connected' | 'disconnected'>('unknown');
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [savedDiscussions, setSavedDiscussions] = useState<any[]>([]);
@@ -446,6 +448,7 @@ export default function Panel() {
   const ttsPlayingRef = useRef(false);
   const audioUnlockedRef = useRef(false);
   const qwenTtsUrlRef = useRef(qwenTtsUrl);
+  const tadaTtsUrlRef = useRef(tadaTtsUrl);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -496,6 +499,7 @@ export default function Panel() {
   }, []);
 
   useEffect(() => { qwenTtsUrlRef.current = qwenTtsUrl; }, [qwenTtsUrl]);
+  useEffect(() => { tadaTtsUrlRef.current = tadaTtsUrl; }, [tadaTtsUrl]);
   useEffect(() => { cartesiaApiKeyRef.current = cartesiaApiKey; }, [cartesiaApiKey]);
 
   useEffect(() => {
