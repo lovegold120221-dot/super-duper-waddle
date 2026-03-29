@@ -4,6 +4,7 @@ import { fetchOllamaModels, streamAgentResponse } from '../lib/ollama';
 import { generateQwenTTS } from '../lib/qwen-tts';
 import { generateCartesiaTTS, checkCartesiaKey } from '../lib/cartesia-tts';
 import { generateGeminiTTS, checkGeminiKey, GEMINI_TTS_VOICES } from '../lib/gemini-tts';
+import { generateVibeVoiceTTS, checkVibeVoiceHealth, VIBEVOICE_VOICES } from '../lib/vibevoice-tts';
 import { CARTESIA_VOICES } from '../lib/cartesia-voices';
 import { MASTER_PANEL_PROMPT } from '../lib/prompts';
 import { saveConversation } from '../lib/supabase';
@@ -403,6 +404,9 @@ export default function Panel() {
   const [activeAgentName, setActiveAgentName] = useState<string | null>(null);
   const [currentStreamingText, setCurrentStreamingText] = useState('');
   const [showSettings, setShowSettings] = useState(false);
+  const [loadingStates, setLoadingStates] = useState<Record<string, boolean>>({});
+  const [errorLogs, setErrorLogs] = useState<Array<{ timestamp: string; agent: string; error: string; type: 'tts' | 'generation' | 'api' }>>([]);
+  const [showErrorPanel, setShowErrorPanel] = useState(false);
   const [showMemoryBoard, setShowMemoryBoard] = useState(false);
   const [memoryBoardContent, setMemoryBoardContent] = useState('');
   const [activeEditIndex, setActiveEditIndex] = useState(0);
@@ -416,6 +420,7 @@ export default function Panel() {
   const [cartesiaApiKey, setCartesiaApiKey] = useState('sk_car_qasJwHmy3d942eJdjLvW5K');
   const [cartesiaStatus, setCartesiaStatus] = useState<'unknown' | 'connected' | 'disconnected'>('unknown');
   const [geminiTtsStatus, setGeminiTtsStatus] = useState<'unknown' | 'connected' | 'disconnected'>('unknown');
+  const [vibevoiceTtsStatus, setVibevoiceTtsStatus] = useState<'unknown' | 'connected' | 'disconnected'>('unknown');
   const [settingsSaved, setSettingsSaved] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [savedDiscussions, setSavedDiscussions] = useState<any[]>([]);
@@ -832,6 +837,8 @@ export default function Panel() {
         } catch (err: any) {
           console.error(`Generation error for ${agent.name}:`, err);
           const errMsg = err?.message || String(err);
+          addErrorLog(agent.name, errMsg, 'generation');
+          
           setMessages(prev => prev.map(m => m.id === msgId
             ? { ...m, text: `⚠️ ${agent.name} failed: ${errMsg}` }
             : m
@@ -870,17 +877,48 @@ export default function Panel() {
 
         // Enqueue TTS — runs fully independently from text display
         const agentSnapshot = { ...agent };
+        
+        // Enforce lightweight TTS models for better performance
+        const lightweightVoice = agentSnapshot.ttsProvider === 'gemini' 
+          ? 'Puck' // Lightweight Gemini voice
+          : agentSnapshot.ttsProvider === 'cartesia'
+            ? '1ec736fa-db96-4eea-9299-235ce2cb7a0e' // Lightweight Cartesia voice
+            : agentSnapshot.ttsProvider === 'vibevoice'
+              ? 'female-natural' // Lightweight VibeVoice
+              : agentSnapshot.voice || 'Kore';
+        
+        setLoadingState(agent.name, true);
+        
         const ttsPromise: Promise<string | null> = isMutedRef.current
           ? Promise.resolve(null)
           : agentSnapshot.ttsProvider === 'qwen'
-            ? generateQwenTTS(agentText.trim().substring(0, 900), agentSnapshot.voice, qwenTtsUrlRef.current)
+            ? generateQwenTTS(agentText.trim().substring(0, 300), lightweightVoice, qwenTtsUrlRef.current) // Reduced text length
             : agentSnapshot.ttsProvider === 'cartesia'
-              ? generateCartesiaTTS(agentText.trim().substring(0, 900), agentSnapshot.voice, cartesiaApiKeyRef.current)
+              ? generateCartesiaTTS(agentText.trim().substring(0, 300), lightweightVoice, cartesiaApiKeyRef.current)
               : agentSnapshot.ttsProvider === 'gemini'
-                ? generateGeminiTTS(agentText.trim().substring(0, 900), agentSnapshot.voice)
-                : generateTTS(agentText.trim().substring(0, 900), agentSnapshot.voice || 'Kore');
+                ? generateGeminiTTS(agentText.trim().substring(0, 300), lightweightVoice)
+                : agentSnapshot.ttsProvider === 'vibevoice'
+                  ? generateVibeVoiceTTS(agentText.trim().substring(0, 300), lightweightVoice)
+                  : generateTTS(agentText.trim().substring(0, 300), lightweightVoice);
 
-        enqueueTTS(ttsPromise, agent.name);
+        // Handle TTS with error logging
+        ttsPromise
+          .then(audioUrl => {
+            if (audioUrl) {
+              enqueueTTS(Promise.resolve(audioUrl), agent.name);
+              console.log(`TTS generated successfully for ${agent.name}`);
+            } else {
+              addErrorLog(agent.name, 'TTS returned null URL', 'tts');
+            }
+            setLoadingState(agent.name, false);
+          })
+          .catch(error => {
+            addErrorLog(agent.name, `TTS generation failed: ${error.message}`, 'tts');
+            setLoadingState(agent.name, false);
+          });
+
+        // Don't wait for TTS, continue with next agent
+        // enqueueTTS(ttsPromise, agent.name);
 
         setCurrentStreamingText('');
         setActiveAgentName(null);
@@ -1004,6 +1042,21 @@ export default function Panel() {
     }
   };
 
+  const addErrorLog = (agent: string, error: string, type: 'tts' | 'generation' | 'api') => {
+    const newError = {
+      timestamp: new Date().toISOString(),
+      agent,
+      error,
+      type
+    };
+    setErrorLogs(prev => [newError, ...prev].slice(0, 50)); // Keep last 50 errors
+    console.error(`[${type.toUpperCase()}] ${agent}:`, error);
+  };
+
+  const setLoadingState = (agent: string, loading: boolean) => {
+    setLoadingStates(prev => ({ ...prev, [agent]: loading }));
+  };
+
   // Stop all TTS playback
   const stopAllTTS = () => {
     if (currentAudioRef.current) {
@@ -1058,6 +1111,10 @@ export default function Panel() {
 
     const audio = new Audio(url);
     currentAudioRef.current = audio;
+
+    // Ensure autoplay works by setting proper attributes
+    audio.preload = 'auto';
+    audio.autoplay = true;
 
     // Wire up Web Audio visualizer
     try {
@@ -1200,6 +1257,10 @@ export default function Panel() {
           <button className="btn-icon" onClick={() => setShowSettings(true)} title="System Settings">
             <SlidersHorizontal size={18} />
           </button>
+          <button className={`btn-icon ${errorLogs.length > 0 ? 'text-red-400 border-red-400' : ''}`} onClick={() => setShowErrorPanel(!showErrorPanel)} title="Error Logs">
+            <X size={18} />
+            {errorLogs.length > 0 && <span className="error-count">{errorLogs.length}</span>}
+          </button>
         </div>
       </header>
 
@@ -1255,6 +1316,43 @@ export default function Panel() {
           </div>
         )}
 
+        {/* Error Logs Panel */}
+        {showErrorPanel && (
+          <div id="error-panel">
+            <div className="error-header">
+              <h3>🚨 Error Logs</h3>
+              <div className="error-actions">
+                <button className="btn-icon" onClick={() => setErrorLogs([])} title="Clear Errors">
+                  <Trash2 size={16} />
+                </button>
+                <button className="btn-icon" onClick={() => setShowErrorPanel(false)} title="Close">
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+            
+            <div className="error-list">
+              {errorLogs.map((error, index) => (
+                <div key={index} className={`error-item ${error.type}`}>
+                  <div className="error-header-info">
+                    <span className="error-agent">{error.agent}</span>
+                    <span className="error-type">{error.type.toUpperCase()}</span>
+                    <span className="error-time">{new Date(error.timestamp).toLocaleTimeString()}</span>
+                  </div>
+                  <div className="error-message">{error.error}</div>
+                </div>
+              ))}
+              
+              {errorLogs.length === 0 && (
+                <div className="no-errors">
+                  <p>No errors logged</p>
+                  <p>System is running smoothly</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         <div id="left-sidebar">
           <div id="chat-window" ref={chatWindowRef}>
             {messages.map((msg) => (
@@ -1263,6 +1361,13 @@ export default function Panel() {
                   <div className="agent-msg-name" style={{ color: msg.colorHex }}>
                     <div className="flex items-center gap-2">
                       <Cpu size={14} /> {msg.sender}
+                      {loadingStates[msg.sender] && (
+                        <div className="loading-indicator">
+                          <div className="loading-dot"></div>
+                          <div className="loading-dot"></div>
+                          <div className="loading-dot"></div>
+                        </div>
+                      )}
                       {speakingAgentName === msg.sender && messages[messages.length - 1]?.id === msg.id && (
                         <span className="inline-viz">
                           <span className="bar"></span><span className="bar"></span><span className="bar"></span><span className="bar"></span><span className="bar"></span>

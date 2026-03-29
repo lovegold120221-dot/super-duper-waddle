@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  vibevoice-tts:
+    build:
+      context: ../..
+      dockerfile: docker/vibevoice/Dockerfile
+    container_name: vibevoice-tts
+    ports:
+      - "8000:8000"
+    environment:
+      - NODE_ENV=production
+      - VIBEVOICE_MODEL= microsoft/vibe
+      - VIBEVOICE_DEVICE= cpu
+      - PORT=8000
+      - CUDA_VISIBLE_DEVICES= # Leave empty for CPU
+    volumes:
+      - ./models:/app/models
+      - ./cache:/app/.cache
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - vibevoice-network
+
+  # Optional: Redis for caching
+  redis:
+    image: redis:7-alpine
+    container_name: vibevoice-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - vibevoice-network
+    command: redis-server --appendonly yes
+
+  # Optional: Nginx for load balancing
+  nginx:
+    image: nginx:alpine
+    container_name: vibevoice-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./ssl:/etc/nginx/ssl
+    depends_on:
+      - vibevoice-tts
+    restart: unless-stopped
+    networks:
+      - vibevoice-network
+
+volumes:
+  redis-data:
+  models:
+  cache:
+
+networks:
+  vibevoice-network:
+    driver: bridge
