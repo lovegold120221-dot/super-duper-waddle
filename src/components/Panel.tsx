@@ -5,6 +5,7 @@ import { generateQwenTTS } from '../lib/qwen-tts';
 import { generateCartesiaTTS, checkCartesiaKey } from '../lib/cartesia-tts';
 import { generateGeminiTTS, checkGeminiKey, GEMINI_TTS_VOICES } from '../lib/gemini-tts';
 import { generateVibeVoiceTTS, checkVibeVoiceHealth, VIBEVOICE_VOICES } from '../lib/vibevoice-tts';
+import { generateTadaTTS, checkTadaHealth, TADA_VOICES } from '../lib/tada-tts';
 import { CARTESIA_VOICES } from '../lib/cartesia-voices';
 import { MASTER_PANEL_PROMPT } from '../lib/prompts';
 import { saveConversation } from '../lib/supabase';
@@ -370,7 +371,7 @@ interface Agent {
   img: React.ReactNode;
   score: number;
   voice: string;
-  ttsProvider: 'qwen' | 'cartesia' | 'gemini';
+  ttsProvider: 'qwen' | 'cartesia' | 'gemini' | 'vibevoice' | 'tada';
   kbUrl: string;
   provider: 'local' | 'cloud';
   modelName: string;
@@ -885,7 +886,9 @@ export default function Panel() {
             ? '1ec736fa-db96-4eea-9299-235ce2cb7a0e' // Lightweight Cartesia voice
             : agentSnapshot.ttsProvider === 'vibevoice'
               ? 'female-natural' // Lightweight VibeVoice
-              : agentSnapshot.voice || 'Kore';
+              : agentSnapshot.ttsProvider === 'tada'
+                ? 'orion' // Lightweight Tada voice
+                : agentSnapshot.voice || 'Kore';
         
         setLoadingState(agent.name, true);
         
@@ -899,7 +902,9 @@ export default function Panel() {
                 ? generateGeminiTTS(agentText.trim().substring(0, 300), lightweightVoice)
                 : agentSnapshot.ttsProvider === 'vibevoice'
                   ? generateVibeVoiceTTS(agentText.trim().substring(0, 300), lightweightVoice)
-                  : generateTTS(agentText.trim().substring(0, 300), lightweightVoice);
+                  : agentSnapshot.ttsProvider === 'tada'
+                    ? generateTadaTTS(agentText.trim().substring(0, 300), lightweightVoice)
+                    : generateTTS(agentText.trim().substring(0, 300), lightweightVoice);
 
         // Handle TTS with error logging
         ttsPromise
