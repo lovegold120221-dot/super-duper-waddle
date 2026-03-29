@@ -9,6 +9,7 @@
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8+-blue.svg)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19+-61DAFB.svg)](https://reactjs.org/)
+[![Vite](https://img.shields.io/badge/Vite-6.4+-646CFF.svg)](https://vitejs.dev/)
 
 ## 🎯 Overview
 
@@ -30,101 +31,108 @@ Strategy Nexus is a sophisticated AI-powered application that simulates a virtua
 - **Distinct Personalities**: Each agent has unique expertise, communication style, and concerns
 - **Manager-Led Convergence**: Nexus ensures discussions stay focused and lead to actionable decisions
 
-### 🎙️ Audio Experience
-- **Multi-Voice TTS**: Each agent has a distinct voice using Gemini, Cartesia, or Qwen TTS
-- **Voice Selection**: Choose from multiple voice options for each agent
-- **Real-time Audio**: Stream text-to-speech as agents speak during discussions
+### 🎙️ Multi-Provider TTS System
+- **5 TTS Providers Supported**:
+  - **Qwen** - Local Chinese TTS (self-hosted)
+  - **Cartesia** - Cloud streaming TTS with low latency
+  - **Gemini** - Google AI TTS with natural voices
+  - **VibeVoice** - Microsoft high-quality voice synthesis
+  - **Tada** - Hume AI expressive voice cloning
+- **Voice Selection**: Choose from 40+ voices across all providers
+- **Real-time Audio Streaming**: Stream TTS as agents speak during discussions
+- **Lightweight Models**: Auto-enforced for performance (300 char limit, optimized voices)
 
 ### 🔄 Flexible AI Backend
-- **Cloud Models**: Use Google Gemini AI for production deployments
-- **Local Models**: Integrate with Ollama for privacy and control
-- **Hybrid Support**: Mix cloud and local models as needed
+- **Cloud Models**: Google Gemini AI for production deployments
+- **Local Models**: Ollama integration for privacy and control (Llama2, Mistral, Qwen3)
+- **Production Ollama**: Docker deployment with Vercel serverless proxy
+- **Hybrid Support**: Mix cloud and local models per agent
+
+### 🗣️ Conversation Management
+- **ChatGPT-Style History**: Auto-generated conversation titles based on topics
+- **Persistent Storage**: LocalStorage for client-side, Supabase for cloud backup
+- **Conversation Panel**: Integrated history panel (no sidebar clutter)
+- **New Conversation Button**: Quick-start fresh discussions
+- **Continue Past Conversations**: Resume from any point in history
 
 ### 🎨 Modern Interface
-- **Responsive Design**: Works seamlessly on desktop and mobile
+- **Photorealistic Avatars**: AI-generated character portraits for each agent
+- **Real-time Streaming**: Watch responses generate with loading indicators
+- **Error Logging Panel**: Debug TTS and generation issues with categorized logs
+- **Visual Feedback**: Loading indicators during TTS generation per agent
 - **Dark/Light Themes**: Toggle between visual preferences
-- **Real-time Streaming**: Watch responses generate in real-time
-- **Collapsible Panels**: Focus on what matters most
+- **Responsive Design**: Works seamlessly on desktop and mobile
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 - Node.js 18+ 
 - npm or yarn
-- Google Gemini API key (for cloud mode)
+- (Optional) Ollama for local models
+- (Optional) API keys for cloud TTS providers
 
 ### Installation
 
-1. **Clone and install dependencies**
-   ```bash
-   git clone <repository-url>
-   cd super-duper-waddle
-   npm install
-   ```
+```bash
+# Clone repository
+git clone https://github.com/lovegold120221-dot/super-duper-waddle.git
+cd super-duper-waddle
 
-2. **Configure environment**
-   ```bash
-   cp .env.example .env.local
-   ```
-   
-   Edit `.env.local` and add your API key:
-   ```env
-   GEMINI_API_KEY="your_gemini_api_key_here"
-   ```
+# Install dependencies
+npm install
 
-3. **Run the application**
-   ```bash
-   npm run dev
-   ```
+# Configure environment
+cp .env.example .env
+# Edit .env with your API keys
 
-4. **Open your browser**
-   Navigate to `http://localhost:3000`
+# Start development server
+npm run dev
+```
+
+Open http://localhost:5533 to access the application.
 
 ## 🔧 Configuration
 
 ### Environment Variables
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `GEMINI_API_KEY` | Yes (cloud mode) | Google Gemini API key |
-| `APP_URL` | No | Application URL (auto-injected in AI Studio) |
+Create a `.env` file with your API keys:
 
-### Voice Provider Setup
-
-#### Gemini TTS (Built-in)
-- Uses Gemini's native TTS capabilities
-- Voices: Puck, Charon, Kore, Fenrir, Zephyr, Aoede
-- No additional setup required
-
-#### Cartesia TTS (Optional)
 ```env
-CARTESIA_API_KEY="your_cartesia_api_key"
+# AI Models
+GEMINI_API_KEY=your-gemini-api-key
+
+# TTS Providers
+CARTESIA_API_KEY=your-cartesia-key
+QWEN_TTS_URL=http://localhost:7861
+TADA_TTS_URL=http://localhost:7862
+VIBEVOICE_URL=http://localhost:8000
+
+# Database (optional)
+NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
+SUPABASE_SERVICE_ROLE_KEY=your-supabase-key
+
+# Ollama (optional)
+OLLAMA_URL=http://localhost:11434
 ```
-- Premium voice synthesis
-- Access to Cartesia's voice library
 
-#### Qwen TTS (Local)
-- Requires local Qwen TTS server
-- Default URL: `http://localhost:7861`
-- Voices: Chelsie, Aaron, Brenda
+## 🐳 Docker Deployment
 
-### Ollama Integration (Local Models)
+### Local Ollama + TTS
+```bash
+# Start all services
+docker-compose up -d
 
-1. **Install Ollama**
-   ```bash
-   curl -fsSL https://ollama.ai/install.sh | sh
-   ```
+# Or deploy VibeVoice TTS specifically
+cd docker/vibevoice
+./deploy.sh production
+```
 
-2. **Pull models**
-   ```bash
-   ollama pull llama3
-   ollama pull qwen2.5:7b
-   ```
-
-3. **Configure in app**
-   - Enable "Local Mode" in settings
-   - Select your preferred Ollama model
-   - Adjust Ollama URL if needed (default: `http://localhost:11434`)
+### Production Vercel + Ollama
+See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed production setup with:
+- Vercel serverless functions
+- Ollama cloud hosting (Railway/Render)
+- Multi-provider TTS configuration
+- SSL/TLS and security setup
 
 ## 📖 Usage Guide
 

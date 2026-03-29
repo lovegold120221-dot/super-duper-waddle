@@ -1,6 +1,19 @@
 # 🚀 Production Deployment Guide
 
-## Ollama + Vercel Production Setup
+Complete deployment guide for Strategy Nexus with Ollama, TTS providers, and Vercel.
+
+## 📋 Table of Contents
+
+- [Ollama Deployment](#ollama-deployment)
+- [TTS Providers](#tts-providers)
+- [Vercel Deployment](#vercel-deployment)
+- [Docker Deployment](#docker-deployment)
+- [Security & Monitoring](#security--monitoring)
+- [Troubleshooting](#troubleshooting)
+
+---
+
+## Ollama Deployment
 
 ### **Option 1: Self-Hosted Ollama Server**
 
@@ -106,7 +119,11 @@ export default {
 OLLAMA_URL=https://your-ollama-server.com
 GEMINI_API_KEY=your-gemini-key
 CARTESIA_API_KEY=your-cartesia-key
+QWEN_TTS_URL=http://localhost:7861
+TADA_TTS_URL=http://localhost:7862
+VIBEVOICE_URL=http://localhost:8000
 NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
+SUPABASE_SERVICE_ROLE_KEY=your-supabase-key
 ```
 
 #### **2. Deploy to Vercel**
@@ -130,6 +147,82 @@ import { streamAgentResponseSmart, fetchOllamaModelsSmart, getOllamaUrlSmart } f
 // Replace ollama imports
 // OLD: import { streamAgentResponse, fetchOllamaModels } from '../lib/ollama';
 // NEW: import { streamAgentResponseSmart, fetchOllamaModelsSmart } from '../lib/ollama-client';
+```
+
+## TTS Providers Deployment
+
+### **Qwen TTS (Local/Cloud)**
+
+#### Docker Deployment
+```dockerfile
+FROM python:3.9-slim
+
+WORKDIR /app
+RUN pip install torch transformers
+
+COPY qwen_server.py .
+EXPOSE 7861
+
+CMD ["python", "qwen_server.py"]
+```
+
+```bash
+docker build -t qwen-tts .
+docker run -d -p 7861:7861 --gpus all qwen-tts
+```
+
+### **Tada TTS (Hume AI)**
+
+#### Docker Deployment
+```dockerfile
+FROM python:3.9-slim
+
+WORKDIR /app
+RUN pip install tada-tts torch
+
+COPY tada_server.py .
+EXPOSE 7862
+
+CMD ["python", "tada_server.py"]
+```
+
+```bash
+docker build -t tada-tts .
+docker run -d -p 7862:7862 tada-tts
+```
+
+### **VibeVoice TTS (Microsoft)**
+
+See [docker/vibevoice/README.md](docker/vibevoice/README.md) for comprehensive deployment guide.
+
+Quick start:
+```bash
+cd docker/vibevoice
+./deploy.sh production
+```
+
+### **Cartesia TTS (Cloud)**
+
+No deployment needed - managed cloud service. Just add API key:
+```env
+CARTESIA_API_KEY=sk_car_xxxxxxxx
+```
+
+### **Gemini TTS (Google Cloud)**
+
+No deployment needed - part of Gemini API. Just add API key:
+```env
+GEMINI_API_KEY=xxxxxxxx
+```
+
+---
+
+## Docker Deployment Considerations**
+
+#### **1. API Key Protection**
+```bash
+# Use Vercel environment variables
+OLLAMA_API_KEY=sk-xxxxx
 ```
 
 ### **Security Considerations**
