@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { generateTTS, streamAgentTurnGemini } from '../lib/gemini';
-import { fetchOllamaModels, streamAgentResponse, TurnContext } from '../lib/ollama';
+import { fetchOllamaModels, streamAgentResponse, TurnContext, generateStructuredTodo } from '../lib/ollama';
 import { generateQwenTTS } from '../lib/qwen-tts';
 import { generateCartesiaTTS, checkCartesiaKey } from '../lib/cartesia-tts';
 import { CARTESIA_VOICES } from '../lib/cartesia-voices';
 import { MASTER_PANEL_PROMPT } from '../lib/prompts';
+import { saveConversation } from '../lib/supabase';
 import { Hexagon, SlidersHorizontal, Mic, Send, AudioLines, X, UserPlus, Plus, Trash2, Image as ImageIcon, Cpu, User, UserX, Star, Volume2, VolumeX, Moon, Sun, PanelLeftClose, PanelLeftOpen, Server } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
@@ -346,72 +347,103 @@ export default function Panel() {
     abortControllerRef.current = new AbortController();
 
     // ─────────────────────────────────────────────────────────────────────────
-    // MULTI-ROUND DISCUSSION ENGINE — ~12-15 min when spoken aloud
+    // MULTI-ROUND DISCUSSION ENGINE — ~15 min max when spoken aloud
     //
-    // Round 1 — Opening Takes:    Manager opens, all 5 specialists react (SHORT)
-    // Round 2 — Cross-fire:       2-3 direct agent-to-agent exchanges (SHORT-MED)
-    // Round 3 — Deep Dive:        Manager redirects, agents challenge assumptions (MED)
-    // Round 4 — Tension & Debate: Disagreements surface, specialists push back (MED-LONG)
-    // Round 5 — Convergence:      Final positions, manager synthesizes, closes (LONG)
+    // Round 1 (7 turns):  Manager opens + 5 specialists react (3 sentences each)
+    //                     + Manager contemplates briefly
+    // Round 2 (6 turns):  Cross-fire, direct agent-to-agent + manager probe
+    //                     + Manager contemplates
+    // Round 3 (5 turns):  Deep arguments, challenge assumptions + manager redirect
+    // Round 4 (5 turns):  Full debate, narrowing toward path
+    // Round 5 (4 turns):  Final positions + Manager verdict with TODO list
     // ─────────────────────────────────────────────────────────────────────────
 
     const managerIdx = agents.findIndex(a => a.role.toLowerCase().includes('manager'));
     const manager = agents[managerIdx >= 0 ? managerIdx : 0];
     const specs = agents.filter((_, i) => i !== (managerIdx >= 0 ? managerIdx : 0));
-    // Pad to 5 slots (cycles through available specialists if fewer configured)
     const [s0, s1, s2, s3, s4] = [...specs, ...specs, ...specs].slice(0, 5);
 
-    // ─── Discussion schedule (23 turns ≈ 12-15 min spoken) ───────────────────
-    // maxPredict per round: R1=120 (2 sentences), R2=180 (3), R3=250 (4), R4=350 (5+), R5=450 (close)
     const schedule: Array<{ agent: typeof manager; ctx: TurnContext }> = [
-      // ── Round 1: Opening takes (SHORT — 2 sentences, punchy) ──
-      { agent: manager, ctx: { isFirst: true,  isLast: false, round: 1, phase: 'open',   maxPredict: 130 } },
-      { agent: s0, ctx: { isFirst: false, isLast: false, round: 1, phase: 'react',  maxPredict: 120, hint: `Give your immediate gut reaction. What's the first thing that jumps out from your area? 2 punchy sentences.` } },
-      { agent: s1, ctx: { isFirst: false, isLast: false, round: 1, phase: 'react',  maxPredict: 120, hint: `Quick first take — what's your biggest concern or what excites you? 2 sentences.` } },
-      { agent: s2, ctx: { isFirst: false, isLast: false, round: 1, phase: 'react',  maxPredict: 120, hint: `Your opening read — what do you want on the table immediately? 2 sentences.` } },
-      { agent: s3, ctx: { isFirst: false, isLast: false, round: 1, phase: 'react',  maxPredict: 120, hint: `Fast reaction — what worries you or what do you love? 2 sentences max.` } },
-      { agent: s4, ctx: { isFirst: false, isLast: false, round: 1, phase: 'react',  maxPredict: 120, hint: `First instinct — what assumption needs challenging right now? 2 sentences.` } },
+      // ── Round 1: Opening (3 sentences each — punchy, distinct perspectives) ──
+      { agent: manager, ctx: { isFirst: true,  isLast: false, round: 1, phase: 'open',        maxPredict: 200 } },
+      { agent: s0,      ctx: { isFirst: false, isLast: false, round: 1, phase: 'react',       maxPredict: 180,
+        hint: `3 sentences. Lead with an emotional opener or reaction sound. What IMMEDIATELY stands out from your domain? Be specific, be real, don't summarize.` } },
+      { agent: s1,      ctx: { isFirst: false, isLast: false, round: 1, phase: 'react',       maxPredict: 180,
+        hint: `3 sentences. What's your first gut reaction? What excites you OR what are you already skeptical about? Start with something like "Hm.", "Right, okay—", "Ooh.", or jump straight into it.` } },
+      { agent: s2,      ctx: { isFirst: false, isLast: false, round: 1, phase: 'react',       maxPredict: 180,
+        hint: `3 sentences. What do you want the table to know right now, before the discussion goes anywhere? One worry, one curiosity, one thing you need answered.` } },
+      { agent: s3,      ctx: { isFirst: false, isLast: false, round: 1, phase: 'react',       maxPredict: 180,
+        hint: `3 sentences. First instinct from your expertise. React to something specific the manager or a colleague said. Don't just repeat general opinions.` } },
+      { agent: s4,      ctx: { isFirst: false, isLast: false, round: 1, phase: 'react',       maxPredict: 180,
+        hint: `3 sentences. What assumption in this topic needs to be challenged immediately? What are we already taking for granted that we shouldn't be?` } },
+      // Manager thinking aloud after round 1
+      { agent: manager, ctx: { isFirst: false, isLast: false, round: 1, phase: 'contemplate', maxPredict: 80,
+        hint: `1-2 sentences. Think out loud after hearing the team's opening takes. What surprised you? What are you noting? Keep it brief and very human.` } },
 
-      // ── Round 2: Cross-fire (SHORT-MED — direct agent-to-agent tension) ──
-      { agent: s1, ctx: { isFirst: false, isLast: false, round: 2, phase: 'challenge', maxPredict: 180, hint: `React directly to what ${s0?.name} just said. Push back or add sharp nuance. 2-3 sentences. Reference their words.` } },
-      { agent: s2, ctx: { isFirst: false, isLast: false, round: 2, phase: 'challenge', maxPredict: 180, hint: `Pick a side in the tension that's forming. Where do you stand and why? 2-3 sentences.` } },
-      { agent: manager, ctx: { isFirst: false, isLast: false, round: 2, phase: 'probe', maxPredict: 120, hint: `Ask the sharpest unasked question — something the team hasn't addressed yet. Be direct. 1-2 sentences.` } },
-      { agent: s3, ctx: { isFirst: false, isLast: false, round: 2, phase: 'react',  maxPredict: 180, hint: `Answer the manager's question from your specialist angle. Don't hedge. 2-3 sentences.` } },
-      { agent: s4, ctx: { isFirst: false, isLast: false, round: 2, phase: 'challenge', maxPredict: 180, hint: `Add what ${s3?.name} missed or challenge their answer directly. 2-3 sentences.` } },
+      // ── Round 2: Cross-fire (3-4 sentences — direct agent-to-agent) ──
+      { agent: s1,      ctx: { isFirst: false, isLast: false, round: 2, phase: 'challenge',   maxPredict: 250,
+        hint: `3-4 sentences. React DIRECTLY to what ${s0?.name || 'the previous speaker'} said. Use their actual words. Push back, challenge an assumption, or add sharp nuance. Don't be polite about it.` } },
+      { agent: s2,      ctx: { isFirst: false, isLast: false, round: 2, phase: 'challenge',   maxPredict: 250,
+        hint: `3-4 sentences. Pick a side in the tension forming between ${s0?.name || 'the team'}. Where do you land and why? Can include dry humour if the moment calls for it.` } },
+      { agent: s3,      ctx: { isFirst: false, isLast: false, round: 2, phase: 'defend',      maxPredict: 250,
+        hint: `3-4 sentences. Someone's been skeptical of your position. Respond. Hold your ground, concede and pivot, or find the middle — but don't just agree to smooth it over.` } },
+      { agent: manager, ctx: { isFirst: false, isLast: false, round: 2, phase: 'probe',       maxPredict: 120,
+        hint: `1-2 sentences. Ask the sharpest question the team hasn't answered yet. Name the specific person if useful. Be blunt.` } },
+      { agent: s4,      ctx: { isFirst: false, isLast: false, round: 2, phase: 'probe',       maxPredict: 250,
+        hint: `3-4 sentences. Answer the manager's question from your specialist angle. Don't hedge. Use an opener that shows you're actually addressing it.` } },
+      // Manager thinking aloud after round 2
+      { agent: manager, ctx: { isFirst: false, isLast: false, round: 2, phase: 'contemplate', maxPredict: 100,
+        hint: `1-2 sentences. What are you processing after this round? Is there a tension forming you need to name? Keep it candid and brief.` } },
 
-      // ── Round 3: Deep dive (MED — build arguments, raise structural issues) ──
-      { agent: s0, ctx: { isFirst: false, isLast: false, round: 3, phase: 'propose',    maxPredict: 260, hint: `Make your strongest case so far. Go deeper — give specific reasoning, examples, or real concerns.` } },
-      { agent: s2, ctx: { isFirst: false, isLast: false, round: 3, phase: 'counter',    maxPredict: 260, hint: `Challenge the direction forming. What is the team glossing over or fundamentally getting wrong?` } },
-      { agent: s4, ctx: { isFirst: false, isLast: false, round: 3, phase: 'probe',      maxPredict: 250, hint: `Stress-test what's been proposed. What breaks? What hasn't been validated? Be specific and a little uncomfortable about it.` } },
-      { agent: manager, ctx: { isFirst: false, isLast: false, round: 3, phase: 'probe', maxPredict: 150, hint: `Name the biggest unresolved tension in the room. Force the team to address it. Be sharp.` } },
+      // ── Round 3: Deep Dive (4-5 sentences — build real arguments) ──
+      { agent: s0,      ctx: { isFirst: false, isLast: false, round: 3, phase: 'propose',     maxPredict: 320,
+        hint: `4-5 sentences. Make your strongest argument so far. Go deeper than your opening. Give specific reasoning, name real-world constraints or examples. Refer to something that was said.` } },
+      { agent: s2,      ctx: { isFirst: false, isLast: false, round: 3, phase: 'counter',     maxPredict: 320,
+        hint: `4-5 sentences. Challenge the dominant direction. What is the team glossing over? What assumption is everyone making that could blow up? Be specific and a little blunt.` } },
+      { agent: s4,      ctx: { isFirst: false, isLast: false, round: 3, phase: 'probe',       maxPredict: 300,
+        hint: `4-5 sentences. Stress-test the plan as it's forming. What breaks? What hasn't been validated? Get specific and a little uncomfortable. Use humour if the absurdity deserves it.` } },
+      { agent: s1,      ctx: { isFirst: false, isLast: false, round: 3, phase: 'deep-dive',   maxPredict: 320,
+        hint: `4-5 sentences. Go deep on the angle only YOU can speak to. What's the structural or domain-specific problem nobody is addressing? What do you know from experience that changes things?` } },
+      { agent: manager, ctx: { isFirst: false, isLast: false, round: 3, phase: 'probe',       maxPredict: 160,
+        hint: `2 sentences. Name the biggest unresolved tension in the room right now. Force the team to face it directly. Be sharp, be specific.` } },
 
-      // ── Round 4: Tension & resolution (MED-LONG — full arguments, real friction) ──
-      { agent: s1, ctx: { isFirst: false, isLast: false, round: 4, phase: 'deep-dive',  maxPredict: 350, hint: `This is your moment. Make your full case — what has the team not fully heard yet? Go deep.` } },
-      { agent: s3, ctx: { isFirst: false, isLast: false, round: 4, phase: 'defend',     maxPredict: 350, hint: `Push back on whoever you disagree with most. Back it up with expertise and specifics.` } },
-      { agent: s0, ctx: { isFirst: false, isLast: false, round: 4, phase: 'propose',    maxPredict: 300, hint: `Narrow toward a path. What should the team actually DO? What should be cut? Give a concrete position.` } },
-      { agent: s2, ctx: { isFirst: false, isLast: false, round: 4, phase: 'counter',    maxPredict: 280, hint: `Add your final constraints or conditions. What needs to be true for this to work?` } },
+      // ── Round 4: Tension & Narrowing (5-6 sentences — real friction, picking a path) ──
+      { agent: s3,      ctx: { isFirst: false, isLast: false, round: 4, phase: 'defend',      maxPredict: 400,
+        hint: `5-6 sentences. This is the moment where you push back hardest. Who are you disagreeing with most and why? Back it up with expertise. Be real about the consequences of ignoring your concern.` } },
+      { agent: s0,      ctx: { isFirst: false, isLast: false, round: 4, phase: 'propose',     maxPredict: 380,
+        hint: `5-6 sentences. Start narrowing toward a real path. What should the team ACTUALLY do? What gets cut? What's phase one? Give a concrete position the manager can act on.` } },
+      { agent: s2,      ctx: { isFirst: false, isLast: false, round: 4, phase: 'counter',     maxPredict: 360,
+        hint: `5-6 sentences. Add your final constraints or conditions on the emerging path. What needs to be true for this to work? What's the condition you won't budge on?` } },
+      { agent: s1,      ctx: { isFirst: false, isLast: false, round: 4, phase: 'deep-dive',   maxPredict: 400,
+        hint: `5-6 sentences. Your full case. What has the team not fully absorbed from your angle? What's the thing you'll regret not saying loudly right now? Go deep and be human about it.` } },
+      { agent: s4,      ctx: { isFirst: false, isLast: false, round: 4, phase: 'challenge',   maxPredict: 360,
+        hint: `5-6 sentences. Final challenge on the direction forming. What's the reality check this group needs before we converge? Be the skeptic the plan needs, not just for drama, but for real.` } },
 
-      // ── Round 5: Final takes + manager close (LONG — conviction, decision, clarity) ──
-      { agent: s4, ctx: { isFirst: false, isLast: false, round: 5, phase: 'final-take', maxPredict: 380, hint: `Final verdict on the proposed direction. Is it realistic? What is your one non-negotiable condition for buy-in?` } },
-      { agent: s1, ctx: { isFirst: false, isLast: false, round: 5, phase: 'final-take', maxPredict: 350, hint: `Wrap up your perspective. What's the one thing you most want to see in phase one?` } },
-      { agent: s3, ctx: { isFirst: false, isLast: false, round: 5, phase: 'final-take', maxPredict: 340, hint: `Final word — what must the team absolutely not skip or cut corners on?` } },
-      { agent: manager, ctx: { isFirst: false, isLast: true,  round: 5, phase: 'close',  maxPredict: 450 } },
+      // ── Round 5: Final Positions + Manager Verdict ──
+      { agent: s3,      ctx: { isFirst: false, isLast: false, round: 5, phase: 'final-take',  maxPredict: 360,
+        hint: `4-5 sentences. Final verdict. Is the direction realistic? What's your one non-negotiable condition for buy-in? Be honest about what you're still worried about.` } },
+      { agent: s0,      ctx: { isFirst: false, isLast: false, round: 5, phase: 'final-take',  maxPredict: 340,
+        hint: `4-5 sentences. Wrap up your perspective. What do you most want to see locked in for phase one? What's the one thing you'd consider a failure if it's skipped?` } },
+      { agent: s2,      ctx: { isFirst: false, isLast: false, round: 5, phase: 'final-take',  maxPredict: 340,
+        hint: `4-5 sentences. Last word. What must the team absolutely not cut corners on? What's the condition that determines whether this succeeds or quietly fails?` } },
+      // Manager final verdict — includes decision + numbered TODO list + approval gate
+      { agent: manager, ctx: { isFirst: false, isLast: true,  round: 5, phase: 'close',       maxPredict: 700 } },
     ];
-    // ─────────────────────────────────────────────────────────────────────────
 
     // Shared memory — every agent sees the full discussion so far
     const discussionHistory: Array<{ speaker: string; role: string; text: string }> = [];
 
-    try {
-      const ROUND_LABELS: Record<number, string> = {
-        1: '── Round 1: Opening Takes ──',
-        2: '── Round 2: Cross-Fire ──',
-        3: '── Round 3: Deep Dive ──',
-        4: '── Round 4: Debate & Tension ──',
-        5: '── Round 5: Convergence & Close ──',
-      };
-      let lastRound = 0;
+    const ROUND_LABELS: Record<number, string> = {
+      1: '── Round 1: Opening Takes ──',
+      2: '── Round 2: Cross-Fire ──',
+      3: '── Round 3: Deep Dive ──',
+      4: '── Round 4: Debate & Tension ──',
+      5: '── Round 5: Convergence & Verdict ──',
+    };
+    let lastRound = 0;
+    let managerVerdict = '';
 
+    try {
       for (const turn of schedule) {
         if (abortControllerRef.current.signal.aborted) break;
         if (!turn.agent) continue;
@@ -419,8 +451,8 @@ export default function Panel() {
         const { agent, ctx } = turn;
         const modelName = agent.modelName || ollamaDefaultModel;
 
-        // Insert round separator when round changes
-        if (ctx.round !== lastRound) {
+        // Insert round separator when round number changes (skip for contemplate turns)
+        if (ctx.round !== lastRound && ctx.phase !== 'contemplate') {
           lastRound = ctx.round;
           setMessages(prev => [...prev, {
             id: `round-sep-${ctx.round}-${Date.now()}`,
@@ -482,17 +514,22 @@ export default function Panel() {
           continue;
         }
 
-        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, text: agentText.trim() } : m));
-        discussionHistory.push({ speaker: agent.name, role: agent.role, text: agentText.trim() });
+        const finalText = agentText.trim();
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, text: finalText } : m));
+        discussionHistory.push({ speaker: agent.name, role: agent.role, text: finalText });
 
+        // Capture manager's closing verdict for Supabase save
+        if (ctx.isLast) managerVerdict = finalText;
+
+        // Skip TTS for contemplate turns (they're very short and meant to be read)
         const agentSnapshot = { ...agent };
-        const ttsPromise: Promise<string | null> = isMutedRef.current
+        const ttsPromise: Promise<string | null> = (isMutedRef.current || ctx.phase === 'contemplate')
           ? Promise.resolve(null)
           : agentSnapshot.ttsProvider === 'qwen'
-            ? generateQwenTTS(agentText.trim().substring(0, 900), agentSnapshot.voice, qwenTtsUrlRef.current)
+            ? generateQwenTTS(finalText.substring(0, 900), agentSnapshot.voice, qwenTtsUrlRef.current)
             : agentSnapshot.ttsProvider === 'cartesia'
-              ? generateCartesiaTTS(agentText.trim().substring(0, 900), agentSnapshot.voice, cartesiaApiKeyRef.current)
-              : generateTTS(agentText.trim().substring(0, 900), agentSnapshot.voice || 'Kore');
+              ? generateCartesiaTTS(finalText.substring(0, 900), agentSnapshot.voice, cartesiaApiKeyRef.current)
+              : generateTTS(finalText.substring(0, 900), agentSnapshot.voice || 'Kore');
 
         enqueueTTS(ttsPromise, agent.name);
 
@@ -509,10 +546,38 @@ export default function Panel() {
       }]);
     } finally {
       if (discussionHistory.length > 0) {
-        setMemoryBoardContent(
-          discussionHistory.map(h => `**${h.speaker}** *(${h.role})*:\n${h.text}`).join('\n\n---\n\n')
-        );
+        const transcriptText = discussionHistory
+          .map(h => `**${h.speaker}** *(${h.role})*:\n${h.text}`)
+          .join('\n\n---\n\n');
+        setMemoryBoardContent(transcriptText);
+
+        // Generate structured output + save to Supabase asynchronously (non-blocking)
+        const modelForSave = manager.modelName || ollamaDefaultModel;
+        generateStructuredTodo(userMsg, transcriptText, managerVerdict, ollamaUrl, modelForSave)
+          .then(({ todoList, userSummary, approvalGate }) => {
+            saveConversation({
+              topic: userMsg,
+              transcript: transcriptText,
+              manager_verdict: managerVerdict || 'See transcript.',
+              user_summary: userSummary,
+              todo_list: todoList,
+              approval_gate: approvalGate,
+              shared_memory: JSON.stringify(discussionHistory),
+              agents: agents.map(a => ({ name: a.name, role: a.role, model: a.modelName })),
+            }).then(id => {
+              if (id) {
+                setMessages(prev => [...prev, {
+                  id: `saved-${Date.now()}`,
+                  sender: 'System',
+                  text: `✅ Discussion saved (ID: ${id.slice(0, 8)}…)`,
+                  type: 'system-msg' as const,
+                }]);
+              }
+            });
+          })
+          .catch(err => console.error('Save error:', err));
       }
+
       setCurrentStreamingText('');
       setActiveAgentName(null);
       if (!ttsPlayingRef.current && ttsQueueRef.current.length === 0) {
@@ -520,6 +585,7 @@ export default function Panel() {
       }
     }
   };
+
 
   // Enqueue TTS audio — text is already in chat, this just drives the voice/visualizer
   const enqueueTTS = (audioUrlPromise: Promise<string | null>, agentName: string) => {
