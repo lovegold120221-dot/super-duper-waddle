@@ -1,0 +1,40 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    },
+    {
+      "src": "api/**/*.ts",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/dist/$1"
+    }
+  ],
+  "env": {
+    "OLLAMA_URL": "@ollama-url",
+    "OLLAMA_API_KEY": "@ollama-api-key",
+    "GEMINI_API_KEY": "@gemini-api-key",
+    "CARTESIA_API_KEY": "@cartesia-api-key",
+    "QWEN_TTS_URL": "@qwen-tts-url",
+    "NEXT_PUBLIC_SUPABASE_URL": "@supabase-url",
+    "SUPABASE_SERVICE_ROLE_KEY": "@supabase-service-role-key"
+  },
+  "functions": {
+    "api/ollama-proxy.ts": {
+      "maxDuration": 30
+    }
+  }
+}
