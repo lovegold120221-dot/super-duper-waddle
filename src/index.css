@@ -90,7 +90,9 @@ header {
 
 /* --- Left Sidebar (Chat & Controls) --- */
 #left-sidebar {
-    width: 420px;
+    width: 25vw;
+    min-width: 200px;
+    max-width: 400px;
     flex-shrink: 0;
     display: flex; flex-direction: column;
     background: var(--bg-chat);
@@ -100,7 +102,7 @@ header {
 }
 
 #left-sidebar.collapsed {
-    margin-left: -420px;
+    margin-left: calc(-25vw - 1px);
     opacity: 0;
     pointer-events: none;
 }
@@ -125,10 +127,176 @@ header {
 
 .user-message { align-self: flex-end; background: var(--chat-user); color: white; border-radius: 18px 18px 4px 18px; box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4); }
 
-/* Controls Area */
+/* Controls Area - Modern Design */
 #controls-wrapper {
     padding: 20px 25px; border-top: 1px solid var(--border-color);
-    background: var(--bg-panel); display: flex; gap: 12px; align-items: center;
+    background: var(--bg-panel); display: flex; flex-direction: column; gap: 16px;
+}
+
+.controls-top {
+    display: flex; gap: 12px; align-items: center;
+}
+
+.input-group-full {
+    flex: 1; 
+    background: var(--bg-input); 
+    border: 1px solid var(--border-color); 
+    border-radius: 16px; 
+    padding: 12px 20px; 
+    display: flex; 
+    align-items: center; 
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+}
+.input-group-full:focus-within { 
+    border-color: var(--accent-blue); 
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+input[type="text"] { 
+    width: 100%; 
+    background: transparent; 
+    border: none; 
+    outline: none; 
+    color: var(--text-main); 
+    font-size: 1rem; 
+    letter-spacing: -0.01em;
+}
+input::placeholder { 
+    color: var(--text-muted); 
+    font-weight: 400;
+}
+
+/* Modern Button Styles */
+.btn-icon {
+    background: var(--bg-input); 
+    border: 1px solid var(--border-color); 
+    color: var(--text-muted); 
+    width: 46px; 
+    height: 46px; 
+    border-radius: 12px; 
+    display: flex; 
+    justify-content: center; 
+    align-items: center;
+    cursor: pointer; 
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    flex-shrink: 0;
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+}
+.btn-icon:hover { 
+    background: var(--border-color); 
+    color: var(--text-main);
+    transform: translateY(-2px);
+}
+.btn-icon:active {
+    transform: translateY(0);
+}
+
+/* Special Button Styles */
+.mic-btn { 
+    width: 48px; 
+    height: 48px; 
+    border-radius: 50%; 
+}
+.mic-btn.recording { 
+    background: var(--danger); 
+    color: white; 
+    border-color: transparent; 
+    animation: pulse 1.5s infinite;
+}
+
+.new-conversation-btn {
+    background: var(--accent-blue); 
+    color: white; 
+    border: none; 
+    width: 46px; 
+    height: 46px; 
+    border-radius: 12px; 
+    display: flex; 
+    justify-content: center; 
+    align-items: center;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.new-conversation-btn:hover {
+    background: #2563eb;
+    transform: translateY(-2px);
+}
+.new-conversation-btn:active {
+    transform: translateY(0);
+}
+
+.send-btn {
+    background: var(--accent-blue); 
+    color: white; 
+    border: none; 
+    width: 48px; 
+    height: 48px; 
+    border-radius: 50%; 
+    display: flex; 
+    justify-content: center; 
+    align-items: center;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.1),
+                0 2px 4px -1px rgba(59, 130, 246, 0.06);
+}
+.send-btn:hover { 
+    background: #2563eb;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 8px -1px rgba(59, 130, 246, 0.15),
+                0 4px 5px -1px rgba(59, 130, 246, 0.08);
+}
+.send-btn:active {
+    transform: translateY(0);
+}
+
+.interrupt-btn { 
+    background: var(--danger-bg); 
+    border: 1px solid var(--danger); 
+    color: var(--danger); 
+    height: 48px; 
+    padding: 0 20px; 
+    border-radius: 12px; 
+    font-weight: 600; 
+    font-size: 0.9rem; 
+    display: flex; 
+    align-items: center; 
+    justify-content: center; 
+    gap: 8px; 
+    cursor: not-allowed; 
+    opacity: 0.5; 
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+}
+.interrupt-btn.enabled { 
+    cursor: pointer; 
+    opacity: 1; 
+}
+.interrupt-btn.enabled:hover { 
+    background: var(--danger); 
+    color: white; 
+    transform: translateY(-2px);
+}
+.interrupt-btn.enabled:active {
+    transform: translateY(0);
+}
+
+/* Icon Sizing */
+.lucide-icon {
+    transition: transform 0.2s ease;
+}
+.btn-icon:hover .lucide-icon,
+.new-conversation-btn:hover .lucide-icon,
+.send-btn:hover .lucide-icon {
+    transform: scale(1.1);
+}
+
+/* Pulse Animation */
+@keyframes pulse { 
+    0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6); } 
+    70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); } 
+    100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } 
 }
 
 .mic-btn { width: 45px; height: 45px; border-radius: 50%; background: var(--bg-input); border: 1px solid var(--border-color); color: var(--text-muted); cursor: pointer; display: flex; justify-content: center; align-items: center; transition: 0.2s; flex-shrink: 0; }
@@ -154,6 +322,16 @@ input::placeholder { color: var(--text-muted); }
 }
 .interrupt-btn.enabled { cursor: pointer; opacity: 1; }
 .interrupt-btn.enabled:hover { background: var(--danger); color: white; }
+
+/* Controls row + full-width input below */
+#controls-wrapper { padding: 12px 25px 16px; border-top: 1px solid var(--border-color); background: var(--bg-panel); display: flex; flex-direction: column; gap: 10px; }
+.controls-top { display: flex; gap: 10px; align-items: center; }
+.input-group-full { background: var(--bg-input); border: 1px solid var(--border-color); border-radius: 30px; padding: 5px 15px; display: flex; align-items: center; transition: 0.2s; }
+.input-group-full:focus-within { border-color: var(--accent-blue); box-shadow: 0 0 0 2px rgba(59,130,246,0.2); }
+.input-group-full input { width: 100%; background: transparent; border: none; outline: none; color: var(--text-main); padding: 10px 5px; font-size: 0.9rem; }
+
+/* Mic canvas (live waveform inside recording button) */
+.mic-canvas { display: block; border-radius: 4px; }
 
 /* --- Right Area (Agent Grid) --- */
 #agent-grid {
@@ -195,7 +373,7 @@ input::placeholder { color: var(--text-muted); }
     position: absolute; top: 15px; right: 15px; z-index: 10;
     background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1);
     color: var(--warning); width: 32px; height: 32px; border-radius: 50%; display: flex; justify-content: center; align-items: center;
-    cursor: pointer; transition: 0.2s; backdrop-filter: blur(5px);
+    cursor: pointer; transition: 0.2s; -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px);
 }
 .star-btn:hover { background: var(--warning); color: #000; transform: scale(1.1); }
 
@@ -238,13 +416,26 @@ input::placeholder { color: var(--text-muted); }
 .inline-viz.generating .bar:nth-child(5) { animation-delay: 0.25s; }
 @keyframes audio-bar-sm { 0% { height: 2px; } 100% { height: 14px; } }
 
+/* Mic recording visualizer */
+.mic-btn.recording .inline-viz {
+  opacity: 1;
+}
+.mic-btn.recording .inline-viz .bar {
+  background: #ef4444; /* danger color */
+  animation: audio-bar-sm 0.45s infinite alternate ease-in-out;
+}
+.mic-btn.recording .inline-viz .bar:nth-child(2) { animation-delay: 0.08s; }
+.mic-btn.recording .inline-viz .bar:nth-child(3) { animation-delay: 0.18s; }
+.mic-btn.recording .inline-viz .bar:nth-child(4) { animation-delay: 0.12s; }
+.mic-btn.recording .inline-viz .bar:nth-child(5) { animation-delay: 0.25s; }
+
 .speaking { border-color: rgba(var(--agent-color-rgb), 1) !important; }
 .speaking .card-top::after { box-shadow: 0 15px 35px rgba(var(--agent-color-rgb), 0.9); }
 .speaking .agent-status { color: rgba(var(--agent-color-rgb), 1); text-shadow: 0 0 15px rgba(var(--agent-color-rgb), 0.7); }
 
 /* --- Settings Modal --- */
 #settings-modal {
-    position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(10px);
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
     display: none; z-index: 1000; justify-content: center; align-items: center; opacity: 0; transition: opacity 0.3s ease;
 }
 .modal-content {
@@ -774,3 +965,15 @@ textarea.custom-input { resize: vertical; min-height: 80px; }
     height: 100%;
     border-radius: 50%;
 }
+
+.agent-avatar > div {
+    width: 100%;
+    height: 100%;
+}
+
+.active .agent-avatar > div {
+    box-shadow: 0 0 12px currentColor;
+    transform: scale(1.05);
+    transition: transform 0.3s, box-shadow 0.3s;
+}
+

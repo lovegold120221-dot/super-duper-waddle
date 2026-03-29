@@ -12,19 +12,18 @@ const AvatarImg: React.FC<{ src: string; alt: string; hex?: string }> = ({
 }) => (
   <div
     style={{
-      width: 64,
-      height: 64,
+      width: '100%',
+      height: '100%',
       borderRadius: '50%',
       overflow: 'hidden',
-      border: `2px solid ${hex}`,
-      flexShrink: 0,
-      background: '#1e1e2e',
+      border: `2px solid ${hex}44`,
+      boxSizing: 'border-box',
     }}
   >
     <img
       src={src}
       alt={alt}
-      style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center top' }}
+      style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center top', display: 'block' }}
       draggable={false}
     />
   </div>

@@ -22,6 +22,13 @@ python qwen_server.py          # Full Qwen3-TTS-0.6B model (requires GPU/torch)
 # Both serve on http://localhost:7861
 ```
 
+To run the local TADA TTS server (Hume AI):
+```bash
+python tada_server.py          # TADA-1B model — requires GPU + hume-tada pip package
+# Serves on http://localhost:7862
+# Reference voice WAVs go in tada_voices/<voice_id>.wav
+```
+
 ## Architecture
 
 ### Component Structure
@@ -45,6 +52,7 @@ Each agent turn calls either `streamAgentTurnGemini()` or `streamAgentResponse()
 | `gemini-tts.ts` | Gemini TTS voice generation |
 | `cartesia-tts.ts` | Cartesia premium TTS |
 | `qwen-tts.ts` | HTTP client → local Python server (port 7861) |
+| `tada-tts.ts` | HTTP client → local TADA server (port 7862) |
 | `cartesia-voices.ts` | Voice ID mappings |
 
 ### TTS Architecture
@@ -76,7 +84,7 @@ Supabase credentials are stored in user settings (per-device), not env vars.
 ```typescript
 interface Agent {
   name: string;
-  ttsProvider: 'qwen' | 'cartesia' | 'gemini' | 'default';
+  ttsProvider: 'qwen' | 'cartesia' | 'gemini' | 'vibevoice' | 'tada';
   voice: string;          // Provider-specific voice ID
   modelName: string;      // Ollama model name (local mode)
   provider: 'cloud' | 'local';
@@ -84,10 +92,11 @@ interface Agent {
 ```
 Default voices (Qwen TTS): Nexus=Aaron, Atlas=Damon, Echo=Felix, Veda=Henry, Nova=Isla, Cipher=Jack.
 
-### Agent Personalities
-All 6 agent system prompts live in **`src/lib/prompts.ts`** (`MASTER_PANEL_PROMPT` + one export per agent). Changes to agent behavior go here, not in Panel.tsx.
+### Agent Avatars
+Agent photos are stored in `public/agents/<name>.jpg` (royalty-free from Pixabay, downloaded locally — never hotlinked). `AgentAvatars.tsx` renders them as circular `<img>` tags with a colored border matching each agent's `hex`. To update an avatar, replace the file and optionally pass a new `hex` prop at the call-site in Panel.tsx. (`MASTER_PANEL_PROMPT` + one export per agent). Changes to agent behavior go here, not in Panel.tsx.
 
-### Short-Response Filtering
+### Agent Personalities
+All 6 agent system prompts live in **`src/lib/prompts.ts`**
 Agent responses shorter than 20 characters are filtered out and retried automatically. Keep this threshold in mind when modifying generation logic.
 
 ### Path Alias

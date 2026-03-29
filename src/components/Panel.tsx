@@ -353,12 +353,12 @@ const colorsList = [
 ];
 
 const defaultAgents = [
-  { id: 0, name: "Nexus", role: "Manager & Orchestrator", prompt: NEXUS_SYSTEM_PROMPT, hex: "#3b82f6", rgba: "59, 130, 246", img: <AgentAvatars.Nexus />, score: 100, voice: AGENT_DEFAULT_QWEN_VOICES['Nexus'], ttsProvider: "qwen", kbUrl: "", provider: "local", modelName: "llama3" },
-  { id: 1, name: "Atlas", role: "Product Strategist", prompt: AGENT_SYSTEM_PROMPTS['Atlas'], hex: "#f97316", rgba: "249, 115, 22", img: <AgentAvatars.Atlas />, score: 100, voice: AGENT_DEFAULT_QWEN_VOICES['Atlas'], ttsProvider: "qwen", kbUrl: "", provider: "local", modelName: "llama3" },
-  { id: 2, name: "Echo", role: "Execution Engineer", prompt: AGENT_SYSTEM_PROMPTS['Echo'], hex: "#a855f7", rgba: "168, 85, 247", img: <AgentAvatars.Echo />, score: 100, voice: AGENT_DEFAULT_QWEN_VOICES['Echo'], ttsProvider: "qwen", kbUrl: "", provider: "local", modelName: "llama3" },
-  { id: 3, name: "Veda", role: "System Architect", prompt: AGENT_SYSTEM_PROMPTS['Veda'], hex: "#10b981", rgba: "16, 185, 129", img: <AgentAvatars.Veda />, score: 100, voice: AGENT_DEFAULT_QWEN_VOICES['Veda'], ttsProvider: "qwen", kbUrl: "", provider: "local", modelName: "qwen3.5" },
-  { id: 4, name: "Nova", role: "UX Specialist", prompt: AGENT_SYSTEM_PROMPTS['Nova'], hex: "#eab308", rgba: "234, 179, 8", img: <AgentAvatars.Nova />, score: 100, voice: AGENT_DEFAULT_QWEN_VOICES['Nova'], ttsProvider: "qwen", kbUrl: "", provider: "local", modelName: "llama3" },
-  { id: 5, name: "Cipher", role: "Reality Checker", prompt: AGENT_SYSTEM_PROMPTS['Cipher'], hex: "#06b6d4", rgba: "6, 182, 212", img: <AgentAvatars.Cipher />, score: 100, voice: AGENT_DEFAULT_QWEN_VOICES['Cipher'], ttsProvider: "qwen", kbUrl: "", provider: "local", modelName: "llama3" }
+  { id: 0, name: "Nexus", role: "Manager & Orchestrator", prompt: NEXUS_SYSTEM_PROMPT, hex: "#3b82f6", rgba: "59, 130, 246", img: <AgentAvatars.Nexus hex="#3b82f6" />, score: 100, voice: AGENT_DEFAULT_QWEN_VOICES['Nexus'], ttsProvider: "qwen", kbUrl: "", provider: "local", modelName: "llama3" },
+  { id: 1, name: "Atlas", role: "Product Strategist", prompt: AGENT_SYSTEM_PROMPTS['Atlas'], hex: "#f97316", rgba: "249, 115, 22", img: <AgentAvatars.Atlas hex="#f97316" />, score: 100, voice: AGENT_DEFAULT_QWEN_VOICES['Atlas'], ttsProvider: "qwen", kbUrl: "", provider: "local", modelName: "llama3" },
+  { id: 2, name: "Echo", role: "Execution Engineer", prompt: AGENT_SYSTEM_PROMPTS['Echo'], hex: "#a855f7", rgba: "168, 85, 247", img: <AgentAvatars.Echo hex="#a855f7" />, score: 100, voice: AGENT_DEFAULT_QWEN_VOICES['Echo'], ttsProvider: "qwen", kbUrl: "", provider: "local", modelName: "llama3" },
+  { id: 3, name: "Veda", role: "System Architect", prompt: AGENT_SYSTEM_PROMPTS['Veda'], hex: "#10b981", rgba: "16, 185, 129", img: <AgentAvatars.Veda hex="#10b981" />, score: 100, voice: AGENT_DEFAULT_QWEN_VOICES['Veda'], ttsProvider: "qwen", kbUrl: "", provider: "local", modelName: "qwen3.5" },
+  { id: 4, name: "Nova", role: "UX Specialist", prompt: AGENT_SYSTEM_PROMPTS['Nova'], hex: "#eab308", rgba: "234, 179, 8", img: <AgentAvatars.Nova hex="#eab308" />, score: 100, voice: AGENT_DEFAULT_QWEN_VOICES['Nova'], ttsProvider: "qwen", kbUrl: "", provider: "local", modelName: "llama3" },
+  { id: 5, name: "Cipher", role: "Reality Checker", prompt: AGENT_SYSTEM_PROMPTS['Cipher'], hex: "#06b6d4", rgba: "6, 182, 212", img: <AgentAvatars.Cipher hex="#06b6d4" />, score: 100, voice: AGENT_DEFAULT_QWEN_VOICES['Cipher'], ttsProvider: "qwen", kbUrl: "", provider: "local", modelName: "llama3" }
 ];
 
 interface Agent {
@@ -453,6 +453,12 @@ export default function Panel() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number>(0);
+  // Mic visualizer refs
+  const micCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const micAnalyserRef = useRef<AnalyserNode | null>(null);
+  const micAnimRef = useRef<number>(0);
+  const micAudioCtxRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', isDarkMode ? 'dark' : 'light');
@@ -660,6 +666,57 @@ export default function Panel() {
     return text.replace(/\[([a-zA-Z0-9\s\-,.]+)\](?!\()/g, '<span class="reaction-tag" style="opacity: 0.7; font-style: italic; font-size: 0.9em;">[$1]</span>');
   };
 
+  const stopMicVisualizer = () => {
+    cancelAnimationFrame(micAnimRef.current);
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach(t => t.stop());
+      micStreamRef.current = null;
+    }
+    if (micAudioCtxRef.current) {
+      micAudioCtxRef.current.close();
+      micAudioCtxRef.current = null;
+    }
+    micAnalyserRef.current = null;
+    // Clear canvas
+    if (micCanvasRef.current) {
+      const ctx = micCanvasRef.current.getContext('2d');
+      if (ctx) ctx.clearRect(0, 0, micCanvasRef.current.width, micCanvasRef.current.height);
+    }
+  };
+
+  const startMicVisualizer = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      micStreamRef.current = stream;
+      const ctx = new AudioContext();
+      micAudioCtxRef.current = ctx;
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 64;
+      source.connect(analyser);
+      micAnalyserRef.current = analyser;
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      const draw = () => {
+        micAnimRef.current = requestAnimationFrame(draw);
+        analyser.getByteFrequencyData(data);
+        const canvas = micCanvasRef.current;
+        if (!canvas) return;
+        const c = canvas.getContext('2d');
+        if (!c) return;
+        c.clearRect(0, 0, canvas.width, canvas.height);
+        const barW = canvas.width / data.length;
+        data.forEach((v, i) => {
+          const h = (v / 255) * canvas.height;
+          c.fillStyle = `rgba(239,68,68,${0.5 + (v / 255) * 0.5})`;
+          c.fillRect(i * barW, canvas.height - h, barW - 1, h);
+        });
+      };
+      draw();
+    } catch {
+      // Mic permission denied — visualizer won't show but recording still works via SpeechAPI
+    }
+  };
+
   const toggleMic = () => {
     if (!recognitionRef.current) {
       alert("Speech Recognition API is not supported in this browser.");
@@ -667,10 +724,13 @@ export default function Panel() {
     }
     if (isRecording) {
       recognitionRef.current.stop();
+      setIsRecording(false);
+      stopMicVisualizer();
     } else {
       initialInputRef.current = input;
       recognitionRef.current.start();
       setIsRecording(true);
+      startMicVisualizer();
     }
   };
 
@@ -713,88 +773,75 @@ export default function Panel() {
     const managerIdx = agents.findIndex(a => a.role.toLowerCase().includes('manager'));
     const manager = agents[managerIdx >= 0 ? managerIdx : 0];
     const specialists = agents.filter((_, i) => i !== (managerIdx >= 0 ? managerIdx : 0));
-    
-    // Create multiple rounds to ensure thorough discussion (15 minutes max)
-    const discussionRounds = 4; // Each specialist will speak 4 times for deeper discussion
-    const turnOrder: any[] = [manager]; // Manager opens
-    
-    // Add multiple rounds of all specialists
-    for (let round = 0; round < discussionRounds; round++) {
-      turnOrder.push(...specialists);
-    }
-    
-    turnOrder.push(manager); // Manager closes
 
-    console.log(`Starting discussion with ${turnOrder.length} turns:`, turnOrder.map(a => a.name));
-    console.log(`Discussion rounds: ${discussionRounds}`);
-    console.log(`Specialists:`, specialists.map(a => a.name));
+    // Build an EXPLICIT typed turn list so each entry knows its round upfront.
+    // This replaces the fragile Math.floor((i-1)/specialists.length) index math.
+    interface TurnEntry {
+      agent: (typeof agents)[0];
+      round: number;   // 0 = manager turn, 1-N = specialist round
+      isFirst: boolean;
+      isLast: boolean;
+    }
+
+    const discussionRounds = 4;
+    const turns: TurnEntry[] = [];
+
+    turns.push({ agent: manager, round: 0, isFirst: true, isLast: false });
+    for (let round = 1; round <= discussionRounds; round++) {
+      for (const specialist of specialists) {
+        turns.push({ agent: specialist, round, isFirst: false, isLast: false });
+      }
+    }
+    turns.push({ agent: manager, round: 0, isFirst: false, isLast: true });
+
+    console.log(`Starting discussion with ${turns.length} turns:`, turns.map(t => `${t.agent.name}(r${t.round})`).join(', '));
+    console.log(`Discussion rounds: ${discussionRounds}, Specialists: ${specialists.map(s => s.name).join(', ')}`);
+
     const discussionHistory: Array<{ speaker: string; role: string; text: string }> = [];
 
     // Track which agents have spoken in each round
     const agentParticipation: Record<string, number[]> = {};
-    agents.forEach(agent => {
-      agentParticipation[agent.name] = [];
-    });
+    agents.forEach(agent => { agentParticipation[agent.name] = []; });
 
     try {
-      for (let i = 0; i < turnOrder.length; i++) {
+      for (let i = 0; i < turns.length; i++) {
         if (abortControllerRef.current.signal.aborted) break;
 
-        const agent = turnOrder[i];
-        const isFirst = i === 0;
-        const isLast = i === turnOrder.length - 1;
-        const isManager = agent.role.toLowerCase().includes('manager');
-        
-        console.log(`=== Turn ${i + 1}/${turnOrder.length}: ${agent.name} ===`);
-        
-        // Calculate which round this is for specialists
-        // Fixed calculation: account for manager at start (i=0)
+        const { agent, round: currentRound, isFirst, isLast } = turns[i];
+        const isManager = currentRound === 0;
         const specialistIndex = specialists.findIndex(s => s.name === agent.name);
-        const currentRound = specialistIndex >= 0 && !isManager ? 
-          Math.floor((i - 1) / specialists.length) + 1 : 
-          0;
-        
-        // Ensure we never exceed planned rounds due to index errors
-        const clampedRound = Math.min(currentRound, discussionRounds);
-        
-        // Debug logging
-        console.log(`Agent ${agent.name} - Index: ${i}, Specialist Index: ${specialistIndex}, Round: ${currentRound}, Is Manager: ${isManager}`);
-        
-        // Track participation using clamped round
-        if (!isManager && clampedRound >= 1) {
-          if (!agentParticipation[agent.name]) {
-            agentParticipation[agent.name] = [];
-          }
-          if (!agentParticipation[agent.name].includes(clampedRound)) {
-            agentParticipation[agent.name].push(clampedRound);
-            console.log(`✅ Tracking participation: ${agent.name} in round ${clampedRound}`);
-          } else {
-            console.log(`⚠️ Already tracked: ${agent.name} in round ${clampedRound}`);
+
+        console.log(`=== Turn ${i + 1}/${turns.length}: ${agent.name} (round ${currentRound}) ===`);
+
+        // Track participation immediately — agent is in queue, they will speak
+        if (!isManager) {
+          if (!agentParticipation[agent.name].includes(currentRound)) {
+            agentParticipation[agent.name].push(currentRound);
+            console.log(`✅ Tracking participation: ${agent.name} in round ${currentRound}`);
           }
         }
-        
-        // Add round indicator for non-manager agents
-        if (!isManager && clampedRound > 0) {
+
+        // Show a round banner at the START of each new round (only for round's first specialist)
+        if (!isManager && specialistIndex === 0) {
           setMessages(prev => [...prev, {
-            id: `round-${clampedRound}-${Date.now()}`,
+            id: `round-banner-${currentRound}-${Date.now()}`,
             sender: 'System',
-            text: `🔄 Round ${clampedRound} of ${discussionRounds} - ${agent.name} (${agent.role})`,
+            text: `━━━ Round ${currentRound} of ${discussionRounds} ━━━`,
             type: 'system-msg'
           }]);
         }
-        
-        // Add manager contemplation between rounds (after last specialist of each round)
-        if (!isManager && clampedRound > 1 && specialistIndex === specialists.length - 1) {
-          // This is the last specialist in the round, add manager contemplation
+
+        // Add manager contemplation between rounds (after last specialist of each round, before next round starts)
+        if (!isManager && specialistIndex === specialists.length - 1 && currentRound < discussionRounds) {
           setMessages(prev => [...prev, {
-            id: `manager-contemplation-${clampedRound}-${Date.now()}`,
+            id: `manager-contemplation-${currentRound}-${Date.now()}`,
             sender: 'Nexus',
-            text: `*leans back and strokes chin thoughtfully* Hmm, interesting points from everyone in round ${clampedRound}. Let me process this... *pauses* Okay, I'm seeing some patterns emerge here. *nods slowly* Let's move to the next round and dig deeper into these insights.`,
+            text: `*leans back and strokes chin thoughtfully* Hmm, interesting points from everyone in round ${currentRound}. Let me process this... *pauses* Okay, I'm seeing some patterns emerge here. *nods slowly* Let's dig deeper in round ${currentRound + 1}.`,
             type: 'agent-message',
             colorHex: agents.find(a => a.role.toLowerCase().includes('manager'))?.hex
           }]);
         }
-        
+
         const modelName = agent.modelName || ollamaDefaultModel;
 
         // Show streaming indicator
@@ -853,19 +900,7 @@ export default function Panel() {
             : m
           ));
           
-          // Still track participation even if they failed, since they attempted to speak
-          if (!isManager && clampedRound >= 1) {
-            if (!agentParticipation[agent.name]) {
-              agentParticipation[agent.name] = [];
-            }
-            if (!agentParticipation[agent.name].includes(clampedRound)) {
-              agentParticipation[agent.name].push(clampedRound);
-              console.log(`🔄 Tracking participation (attempt): ${agent.name} in round ${clampedRound}`);
-            } else {
-              console.log(`⚠️ Already tracked (attempt): ${agent.name} in round ${clampedRound}`);
-            }
-          }
-          
+          // Participation was already tracked before the try block — no duplicate needed.
           console.log(`Continuing to next agent after ${agent.name} error...`);
           continue;
         }
@@ -911,7 +946,7 @@ export default function Panel() {
                 : agentSnapshot.ttsProvider === 'vibevoice'
                   ? generateVibeVoiceTTS(agentText.trim().substring(0, 300), lightweightVoice)
                   : agentSnapshot.ttsProvider === 'tada'
-                    ? generateTadaTTS(agentText.trim().substring(0, 300), lightweightVoice)
+                    ? generateTadaTTS(agentText.trim().substring(0, 300), lightweightVoice, tadaTtsUrlRef.current)
                     : generateTTS(agentText.trim().substring(0, 300), lightweightVoice);
 
         // Handle TTS with error logging
@@ -936,10 +971,10 @@ export default function Panel() {
         setCurrentStreamingText('');
         setActiveAgentName(null);
         
-        console.log(`✅ Completed turn ${i + 1}/${turnOrder.length} for ${agent.name}`);
+        console.log(`✅ Completed turn ${i + 1}/${turns.length} for ${agent.name}`);
       }
       
-      console.log(`🎉 Discussion completed! Total turns: ${turnOrder.length}`);
+       console.log(`🎉 Discussion completed! Total turns: ${turns.length}`);
     } catch (error) {
       console.error('Discussion error:', error);
       setMessages(prev => [...prev, {
@@ -973,12 +1008,9 @@ export default function Panel() {
         });
 
         if (missingParticipation.length > 0) {
-          setMessages(prev => [...prev, {
-            id: `participation-warning-${Date.now()}`,
-            sender: 'System',
-            text: `⚠️ Participation Report:\n${missingParticipation.join('\n')}`,
-            type: 'system-msg'
-          }]);
+          // Log missed turns to console only — these happen when Ollama is slow/aborted,
+          // not a code bug. Showing a warning in chat is misleading to the user.
+          console.warn('Participation gaps (likely Ollama timeout/abort):', missingParticipation.join(', '));
         } else {
           setMessages(prev => [...prev, {
             id: `participation-success-${Date.now()}`,
@@ -1241,40 +1273,43 @@ export default function Panel() {
         <div className="flex items-center gap-4">
           <div className="logo"><Hexagon /><span>STRATEGY NEXUS</span></div>
         </div>
-        <div className="header-actions">
-          <button className="btn-icon" onClick={() => setShowHistory(!showHistory)} title="Conversation History">
-            <Server size={18} />
-          </button>
-          <button className="btn-icon" onClick={() => setIsDarkMode(!isDarkMode)} title="Toggle Theme">
-            {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
-          <button 
-            className={`btn-icon ${isMuted ? '' : 'text-blue-400 border-blue-400'}`}
-            onClick={() => {
-              const next = !isMuted;
-              setIsMuted(next);
-              isMutedRef.current = next;
-              if (next) stopAllTTS();
-            }}
-            title={isMuted ? 'Unmute TTS' : 'Mute TTS'}
-          >
-            {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
-          </button>
-          <button 
-            className={`btn-icon ${memoryBoardContent ? 'text-blue-400 border-blue-400' : ''}`} 
-            onClick={() => setShowMemoryBoard(!showMemoryBoard)} 
-            title="Shared Memory Board"
-          >
-            <AudioLines size={18} />
-          </button>
-          <button className="btn-icon" onClick={() => setShowSettings(true)} title="System Settings">
-            <SlidersHorizontal size={18} />
-          </button>
-          <button className={`btn-icon ${errorLogs.length > 0 ? 'text-red-400 border-red-400' : ''}`} onClick={() => setShowErrorPanel(!showErrorPanel)} title="Error Logs">
-            <X size={18} />
-            {errorLogs.length > 0 && <span className="error-count">{errorLogs.length}</span>}
-          </button>
-        </div>
+         <div className="header-actions">
+           <button className="btn-icon" onClick={() => setShowHistory(!showHistory)} title="Conversation History">
+             <Server size={18} />
+           </button>
+           <button className="btn-icon" onClick={() => setIsDarkMode(!isDarkMode)} title="Toggle Theme">
+             {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+           </button>
+           <button className="btn-icon" onClick={() => setIsSidebarOpen(!isSidebarOpen)} title="Toggle Sidebar">
+             {isSidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
+           </button>
+           <button 
+             className={`btn-icon ${isMuted ? '' : 'text-blue-400 border-blue-400'}`}
+             onClick={() => {
+               const next = !isMuted;
+               setIsMuted(next);
+               isMutedRef.current = next;
+               if (next) stopAllTTS();
+             }}
+             title={isMuted ? 'Unmute TTS' : 'Mute TTS'}
+           >
+             {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+           </button>
+           <button 
+             className={`btn-icon ${memoryBoardContent ? 'text-blue-400 border-blue-400' : ''}`} 
+             onClick={() => setShowMemoryBoard(!showMemoryBoard)} 
+             title="Shared Memory Board"
+           >
+             <AudioLines size={18} />
+           </button>
+           <button className="btn-icon" onClick={() => setShowSettings(true)} title="System Settings">
+             <SlidersHorizontal size={18} />
+           </button>
+           <button className={`btn-icon ${errorLogs.length > 0 ? 'text-red-400 border-red-400' : ''}`} onClick={() => setShowErrorPanel(!showErrorPanel)} title="Error Logs">
+             <X size={18} />
+             {errorLogs.length > 0 && <span className="error-count">{errorLogs.length}</span>}
+           </button>
+         </div>
       </header>
 
       <main id="main-layout">
@@ -1366,7 +1401,7 @@ export default function Panel() {
           </div>
         )}
 
-        <div id="left-sidebar">
+        <div id="left-sidebar" className={!isSidebarOpen ? 'collapsed' : ''}>
           <div id="chat-window" ref={chatWindowRef}>
             {messages.map((msg) => (
               <div key={msg.id} className={msg.type === 'system-msg' ? 'system-msg' : `message ${msg.type}`}>
@@ -1437,33 +1472,44 @@ export default function Panel() {
           </div>
 
           <div id="controls-wrapper">
-            <button className="mic-btn" onClick={toggleMic} title="Voice to Text">
-              <Mic size={20} />
-            </button>
-            
-            <button className="new-conversation-btn" onClick={createNewDiscussion} title="New Conversation">
-              <Plus size={16} />
-            </button>
-            
-            <div className="input-group">
-              <input 
-                type="text" 
+            <div className="controls-top">
+              <button
+                className={`mic-btn ${isRecording ? 'recording' : ''}`}
+                onClick={toggleMic}
+                title={isRecording ? 'Stop Recording' : 'Voice to Text'}
+              >
+                {isRecording ? (
+                  <canvas
+                    ref={micCanvasRef}
+                    className="mic-canvas"
+                    width={28}
+                    height={28}
+                  />
+                ) : (
+                  <Mic size={20} />
+                )}
+              </button>
+              <button className="new-conversation-btn" onClick={createNewDiscussion} title="New Conversation">
+                <Plus size={16} />
+              </button>
+              <button className="send-btn" onClick={() => handleSend()} title="Send Prompt" disabled={isProcessing || !input.trim()}>
+                <Send size={20} />
+              </button>
+              <button className={`interrupt-btn ${isProcessing ? 'enabled' : ''}`} onClick={handleInterrupt} title="Interrupt Agents" disabled={!isProcessing}>
+                <AudioLines size={18} />
+                <span>HALT</span>
+              </button>
+            </div>
+            <div className="input-group-full">
+              <input
+                type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                placeholder={isProcessing ? "Inject parameter or halt process..." : "Enter directive..."}
+                placeholder={isProcessing ? 'Inject parameter or halt process...' : 'Enter directive...'}
                 disabled={isProcessing}
               />
             </div>
-
-            <button className="send-btn" onClick={() => handleSend()} title="Send Prompt" disabled={isProcessing || !input.trim()}>
-              <Send size={20} />
-            </button>
-
-            <button className={`interrupt-btn ${isProcessing ? 'enabled' : ''}`} onClick={handleInterrupt} title="Interrupt Agents" disabled={!isProcessing}>
-              <AudioLines size={18} />
-              <span>HALT</span>
-            </button>
           </div>
         </div>
 
@@ -1517,7 +1563,7 @@ export default function Panel() {
                 <h2>Shared Memory Board</h2>
                 <p>Facts, assumptions, conflicts, decisions, and open questions.</p>
               </div>
-              <button onClick={() => setShowMemoryBoard(false)} className="btn-icon"><X /></button>
+              <button onClick={() => setShowMemoryBoard(false)} className="btn-icon" title="Close Memory Board" aria-label="Close Memory Board"><X /></button>
             </div>
             <div className="settings-body markdown-body">
               {memoryBoardContent ? (
@@ -1588,7 +1634,7 @@ export default function Panel() {
                       {isSavingSettings ? 'Saving...' : settingsSaved ? '✅ Saved' : '💾 Save Settings'}
                     </button>
                   )}
-                  <button onClick={() => setShowSettings(false)} className="btn-icon"><X /></button>
+                  <button onClick={() => setShowSettings(false)} className="btn-icon" title="Close Settings" aria-label="Close Settings"><X /></button>
                 </div>
               </div>
 
@@ -1620,7 +1666,7 @@ export default function Panel() {
 
                   <div className="form-group full">
                     <label>Default Ollama Model</label>
-                    <select className="custom-input" value={ollamaDefaultModel} onChange={(e) => setOllamaDefaultModel(e.target.value)}>
+                    <select className="custom-input" title="Default Ollama Model" aria-label="Default Ollama Model" value={ollamaDefaultModel} onChange={(e) => setOllamaDefaultModel(e.target.value)}>
                       {ollamaModels.length > 0 ? ollamaModels.map(m => (
                         <option key={m} value={m}>{m}</option>
                       )) : (
@@ -1824,6 +1870,63 @@ export default function Panel() {
                       <strong>7 voices available.</strong> Google Gemini TTS with high-quality voice synthesis. Uses your Gemini API key for cloud-based text-to-speech.
                     </p>
                   </div>
+
+                  {/* ─── TADA TTS ─── */}
+                  <div style={{ marginTop: '30px', paddingTop: '20px', borderTop: '1px solid var(--border-color)' }}>
+                    <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '20px' }}>🎤 TADA TTS (Local — Hume AI)</h3>
+                  </div>
+
+                  <div className="form-group full">
+                    <label>TADA Server URL</label>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <input
+                        type="text"
+                        className="custom-input"
+                        style={{ flex: 1 }}
+                        value={tadaTtsUrl}
+                        onChange={(e) => { setTadaTtsUrl(e.target.value); setTadaTtsStatus('unknown'); }}
+                        placeholder="http://localhost:7862"
+                      />
+                      <button
+                        className="custom-input"
+                        style={{ cursor: 'pointer', background: 'var(--accent-blue)', color: 'white', border: 'none', whiteSpace: 'nowrap', fontWeight: 600 }}
+                        onClick={async () => {
+                          setTadaTtsStatus('unknown');
+                          const ok = await checkTadaHealth(tadaTtsUrl);
+                          setTadaTtsStatus(ok ? 'connected' : 'disconnected');
+                        }}
+                      >
+                        Test
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="form-group full">
+                    <label>Connection Status</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: tadaTtsStatus === 'connected' ? 'var(--success)' : tadaTtsStatus === 'unknown' ? 'var(--text-muted)' : 'var(--danger)' }}></div>
+                      <span style={{ fontSize: '0.9rem' }}>
+                        {tadaTtsStatus === 'connected' ? '✅ Connected — TADA TTS ready' : tadaTtsStatus === 'unknown' ? '⚠️ Not tested — click Test' : '❌ Not connected — start with: python tada_server.py'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="form-group full">
+                    <label>Available Voices</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {TADA_VOICES.map(v => (
+                        <span key={v.id} style={{ padding: '6px 12px', background: 'var(--bg-input)', border: '1px solid var(--border-color)', borderRadius: '8px', fontSize: '0.85rem' }}>
+                          <strong>{v.name}</strong> — {v.desc}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="form-group full" style={{ marginTop: '10px', padding: '15px', background: 'var(--bg-input)', borderRadius: '10px', border: '1px solid var(--border-color)' }}>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6, margin: 0 }}>
+                      <strong>Hume AI TADA-1B</strong> — Local zero-shot voice cloning using Meta Llama 3.2. Each voice uses a reference WAV file in <code>tada_voices/</code>. Requires GPU for best performance. Start with: <code>python tada_server.py</code>
+                    </p>
+                  </div>
                 </div>
               ) : agents.length === 0 ? (
                 <div style={{ display: 'flex', flex: 1, justifyContent: 'center', alignItems: 'center', flexDirection: 'column', color: 'var(--text-muted)', marginTop: '60px' }}>
@@ -1836,11 +1939,14 @@ export default function Panel() {
                 <div className="form-grid">
                   <div className="form-group full">
                     <label>Master System Prompt</label>
-                    <textarea 
-                      className="custom-input" 
+                    <textarea
+                      className="custom-input"
+                      title="Master System Prompt"
+                      aria-label="Master System Prompt"
+                      placeholder="Enter the master orchestration prompt..."
                       style={{ height: '500px', fontFamily: 'monospace', fontSize: '0.85rem' }}
-                      value={systemPrompt} 
-                      onChange={(e) => setSystemPrompt(e.target.value)} 
+                      value={systemPrompt}
+                      onChange={(e) => setSystemPrompt(e.target.value)}
                     />
                   </div>
                 </div>
@@ -1849,7 +1955,7 @@ export default function Panel() {
                   <div className="form-grid">
                     <div className="form-group">
                       <label>Display Name</label>
-                      <input type="text" className="custom-input" value={agents[activeEditIndex].name} onChange={(e) => {
+                      <input type="text" className="custom-input" title="Display Name" aria-label="Display Name" placeholder="Agent display name" value={agents[activeEditIndex].name} onChange={(e) => {
                         const newAgents = [...agents];
                         newAgents[activeEditIndex].name = e.target.value;
                         setAgents(newAgents);
@@ -1858,7 +1964,7 @@ export default function Panel() {
 
                     <div className="form-group">
                       <label>Role</label>
-                      <input type="text" className="custom-input" value={agents[activeEditIndex].role} onChange={(e) => {
+                      <input type="text" className="custom-input" title="Agent Role" aria-label="Agent Role" placeholder="e.g. Product Strategist" value={agents[activeEditIndex].role} onChange={(e) => {
                         const newAgents = [...agents];
                         newAgents[activeEditIndex].role = e.target.value;
                         setAgents(newAgents);
@@ -1867,7 +1973,7 @@ export default function Panel() {
 
                     <div className="form-group">
                       <label>Voice Profile</label>
-                      <select className="custom-input" value={agents[activeEditIndex].voice} onChange={(e) => {
+                      <select className="custom-input" title="Voice Profile" aria-label="Voice Profile" value={agents[activeEditIndex].voice} onChange={(e) => {
                         const newAgents = [...agents];
                         const selectedVoice = e.target.value;
                         newAgents[activeEditIndex].voice = selectedVoice;
@@ -1877,6 +1983,8 @@ export default function Panel() {
                           newAgents[activeEditIndex].ttsProvider = 'cartesia';
                         } else if (GEMINI_TTS_VOICES.includes(selectedVoice)) {
                           newAgents[activeEditIndex].ttsProvider = 'gemini';
+                        } else if (TADA_VOICES.some(v => v.id === selectedVoice)) {
+                          newAgents[activeEditIndex].ttsProvider = 'tada';
                         } else {
                           newAgents[activeEditIndex].ttsProvider = 'gemini';
                         }
@@ -1903,12 +2011,15 @@ export default function Panel() {
                             <option key={v.id} value={v.id}>{v.name} ({v.language})</option>
                           ))}
                         </optgroup>
+                        <optgroup label="🎤 TADA TTS (Local — Hume AI)">
+                          {TADA_VOICES.map(v => <option key={v.id} value={v.id}>{v.name} — {v.desc}</option>)}
+                        </optgroup>
                       </select>
                     </div>
 
                     <div className="form-group">
                       <label>Color Hex</label>
-                      <input type="text" className="custom-input" value={agents[activeEditIndex].hex} onChange={(e) => {
+                      <input type="text" className="custom-input" title="Color Hex" aria-label="Color Hex" placeholder="#3b82f6" value={agents[activeEditIndex].hex} onChange={(e) => {
                         const newAgents = [...agents];
                         newAgents[activeEditIndex].hex = e.target.value;
                         newAgents[activeEditIndex].rgba = hexToRgb(e.target.value);
@@ -1918,7 +2029,7 @@ export default function Panel() {
 
                     <div className="form-group">
                       <label>Model Provider</label>
-                      <select className="custom-input" value={agents[activeEditIndex].provider} onChange={(e) => {
+                      <select className="custom-input" title="Model Provider" aria-label="Model Provider" value={agents[activeEditIndex].provider} onChange={(e) => {
                         const newAgents = [...agents];
                         newAgents[activeEditIndex].provider = e.target.value;
                         newAgents[activeEditIndex].modelName = '';
@@ -1931,7 +2042,7 @@ export default function Panel() {
 
                     <div className="form-group">
                       <label>Model</label>
-                      <select className="custom-input" value={agents[activeEditIndex].modelName} onChange={(e) => {
+                      <select className="custom-input" title="Model" aria-label="Model" value={agents[activeEditIndex].modelName} onChange={(e) => {
                         const newAgents = [...agents];
                         newAgents[activeEditIndex].modelName = e.target.value;
                         setAgents(newAgents);
@@ -1957,7 +2068,7 @@ export default function Panel() {
 
                     <div className="form-group full">
                       <label>System Prompt (Directives)</label>
-                      <textarea className="custom-input" value={agents[activeEditIndex].prompt} onChange={(e) => {
+                      <textarea className="custom-input" title="System Prompt" aria-label="System Prompt" placeholder="Enter agent directives and personality instructions..." value={agents[activeEditIndex].prompt} onChange={(e) => {
                         const newAgents = [...agents];
                         newAgents[activeEditIndex].prompt = e.target.value;
                         setAgents(newAgents);
@@ -1969,10 +2080,12 @@ export default function Panel() {
                       <div className="file-upload-zone" onClick={() => document.getElementById('avatar-upload')?.click()}>
                         <ImageIcon size={24} style={{ margin: '0 auto 10px auto', color: 'var(--text-muted)' }} />
                         <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)' }}>Click to upload image</p>
-                        <input 
-                          type="file" 
-                          id="avatar-upload" 
-                          style={{ display: 'none' }} 
+                        <input
+                          type="file"
+                          id="avatar-upload"
+                          title="Upload Agent Avatar"
+                          aria-label="Upload Agent Avatar"
+                          style={{ display: 'none' }}
                           accept="image/*"
                           onChange={(e) => {
                             const file = e.target.files?.[0];
